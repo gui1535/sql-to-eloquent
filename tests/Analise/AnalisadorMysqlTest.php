@@ -84,7 +84,7 @@ class AnalisadorMysqlTest extends TestCase
         );
     }
 
-    public function test_ignora_insert_set_e_drop_sem_aviso(): void
+    public function test_captura_insert_e_ignora_set_drop_sem_aviso(): void
     {
         $schema = $this->analisador->analisar(<<<'SQL'
             SET NAMES utf8mb4;
@@ -98,6 +98,10 @@ class AnalisadorMysqlTest extends TestCase
         SQL);
 
         $this->assertSame(['usuarios'], $schema->nomesTabelas());
+        $this->assertTrue($schema->temDados());
+        $this->assertSame('usuarios', $schema->insercoes[0]->tabela);
+        $this->assertSame(['nome'], $schema->insercoes[0]->colunas);
+        $this->assertSame([['Ana']], $schema->insercoes[0]->linhas);
         $this->assertSame([], $schema->avisos);
     }
 

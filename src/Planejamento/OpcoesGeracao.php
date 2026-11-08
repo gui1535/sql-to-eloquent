@@ -16,8 +16,6 @@ class OpcoesGeracao
         public readonly bool $sobrescrever = false,
         public readonly string $namespaceModels = 'App\\Models',
         public readonly string $namespaceControllers = 'App\\Http\\Controllers',
-        public readonly string $namespaceRequests = 'App\\Http\\Requests',
-        public readonly string $namespaceResources = 'App\\Http\\Resources',
     ) {
     }
 

@@ -3,6 +3,7 @@
 namespace SqlToEloquent\Analise;
 
 use RuntimeException;
+use SqlToEloquent\Dominio\Insercao;
 use SqlToEloquent\Dominio\Schema;
 use SqlToEloquent\Dominio\Tabela;
 
@@ -11,6 +12,7 @@ class AnalisadorMysql
     public function __construct(
         private readonly TokenizadorSql $tokenizador = new TokenizadorSql,
         private readonly InterpretadorCreateTable $interpretador = new InterpretadorCreateTable,
+        private readonly InterpretadorInsert $interpretadorInsert = new InterpretadorInsert,
     ) {
     }
 
@@ -35,6 +37,7 @@ class AnalisadorMysql
         $statements = $this->separarStatements($tokens);
 
         $tabelas = [];
+        $insercoes = [];
         $avisos = [];
 
         foreach ($statements as $statement) {
@@ -48,10 +51,15 @@ class AnalisadorMysql
             if ($resultado['tabela'] !== null) {
                 $tabelas[] = $resultado['tabela'];
             }
+
+            if ($resultado['insercao'] !== null) {
+                $insercoes[] = $resultado['insercao'];
+            }
         }
 
         return new Schema(
             tabelas: $tabelas,
+            insercoes: $insercoes,
             avisos: $avisos,
             origem: $origem,
         );
@@ -87,38 +95,61 @@ class AnalisadorMysql
 
     /**
      * @param  list<Token>  $tokens
-     * @return array{tabela: ?Tabela, avisos: list<string>}
+     * @return array{tabela: ?Tabela, insercao: ?Insercao, avisos: list<string>}
      */
     private function processarStatement(array $tokens): array
     {
+        $vazio = ['tabela' => null, 'insercao' => null, 'avisos' => []];
         $primeiro = $tokens[0] ?? null;
 
         if ($primeiro === null) {
-            return ['tabela' => null, 'avisos' => []];
+            return $vazio;
         }
 
         if ($this->ehCreateTable($tokens)) {
             try {
-                return $this->interpretador->interpretar($tokens);
+                $resultado = $this->interpretador->interpretar($tokens);
+
+                return [
+                    'tabela' => $resultado['tabela'],
+                    'insercao' => null,
+                    'avisos' => $resultado['avisos'],
+                ];
             } catch (RuntimeException $erro) {
                 $nome = $this->tentarExtrairNomeTabela($tokens) ?? 'desconhecida';
 
                 return [
                     'tabela' => null,
+                    'insercao' => null,
                     'avisos' => ["Falha ao interpretar CREATE TABLE '{$nome}': {$erro->getMessage()}"],
                 ];
             }
         }
 
-        if ($this->deveIgnorar($tokens)) {
-            return ['tabela' => null, 'avisos' => []];
+        if ($this->ehInsert($tokens)) {
+            try {
+                return [
+                    'tabela' => null,
+                    'insercao' => $this->interpretadorInsert->interpretar($tokens),
+                    'avisos' => [],
+                ];
+            } catch (RuntimeException $erro) {
+                return [
+                    'tabela' => null,
+                    'insercao' => null,
+                    'avisos' => ["Falha ao interpretar INSERT: {$erro->getMessage()}"],
+                ];
+            }
         }
 
-        $resumo = $this->resumoStatement($tokens);
+        if ($this->deveIgnorar($tokens)) {
+            return $vazio;
+        }
 
         return [
             'tabela' => null,
-            'avisos' => ["Statement nao suportado e ignorado: {$resumo}"],
+            'insercao' => null,
+            'avisos' => ['Statement nao suportado e ignorado: '.$this->resumoStatement($tokens)],
         ];
     }
 
@@ -137,13 +168,19 @@ class AnalisadorMysql
     }
 
     /** @param list<Token> $tokens */
+    private function ehInsert(array $tokens): bool
+    {
+        return ($tokens[0] ?? null)?->eh(TiposToken::IDENTIFICADOR, 'INSERT') === true;
+    }
+
+    /** @param list<Token> $tokens */
     private function deveIgnorar(array $tokens): bool
     {
         $primeiro = strtoupper($tokens[0]->valor);
         $segundo = strtoupper($tokens[1]->valor ?? '');
 
         $comandosIgnorados = [
-            'SET', 'USE', 'INSERT', 'UPDATE', 'DELETE', 'REPLACE', 'LOCK', 'UNLOCK',
+            'SET', 'USE', 'UPDATE', 'DELETE', 'REPLACE', 'LOCK', 'UNLOCK',
             'START', 'COMMIT', 'ROLLBACK', 'SAVEPOINT', 'TRUNCATE',
         ];
 

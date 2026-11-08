@@ -6,10 +6,12 @@ class Schema
 {
     /**
      * @param  list<Tabela>  $tabelas
+     * @param  list<Insercao>  $insercoes
      * @param  list<string>  $avisos
      */
     public function __construct(
         public readonly array $tabelas = [],
+        public readonly array $insercoes = [],
         public readonly array $avisos = [],
         public readonly ?string $origem = null,
     ) {
@@ -32,5 +34,10 @@ class Schema
             fn (Tabela $tabela) => $tabela->nome,
             $this->tabelas,
         );
+    }
+
+    public function temDados(): bool
+    {
+        return $this->insercoes !== [];
     }
 }

@@ -14,11 +14,11 @@ class ComandoGerar extends Command
 {
     protected $signature = 'sql:gerar
         {arquivo : Caminho do arquivo SQL}
-        {--artefatos= : Lista separada por virgula (migrations,models,factories,...)}
+        {--artefatos= : Lista separada por virgula (migrations,models,controllers,seeders)}
         {--sobrescrever : Permite sobrescrever arquivos existentes}
         {--sem-interacao : Executa sem perguntas interativas}';
 
-    protected $description = 'Gera artefatos Laravel a partir de um schema SQL';
+    protected $description = 'Gera migrations, models e controllers CRUD a partir de um schema SQL';
 
     public function handle(
         AnalisadorMysql $analisador,
@@ -78,17 +78,14 @@ class ComandoGerar extends Command
 
     private function montarOpcoes(): OpcoesGeracao
     {
-        $artefatos = $this->resolverArtefatos();
         $config = config('sql-to-eloquent');
 
         return new OpcoesGeracao(
-            artefatos: $artefatos,
+            artefatos: $this->resolverArtefatos(),
             caminhos: $config['caminhos'] ?? [],
             sobrescrever: (bool) $this->option('sobrescrever') || ($config['sobrescrever'] ?? false),
             namespaceModels: $config['namespace_models'] ?? 'App\\Models',
             namespaceControllers: $config['namespace_controllers'] ?? 'App\\Http\\Controllers',
-            namespaceRequests: $config['namespace_requests'] ?? 'App\\Http\\Requests',
-            namespaceResources: $config['namespace_resources'] ?? 'App\\Http\\Resources',
         );
     }
 

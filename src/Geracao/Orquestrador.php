@@ -4,14 +4,9 @@ namespace SqlToEloquent\Geracao;
 
 use SqlToEloquent\Dominio\Schema;
 use SqlToEloquent\Geracao\Geradores\GeradorController;
-use SqlToEloquent\Geracao\Geradores\GeradorFactory;
 use SqlToEloquent\Geracao\Geradores\GeradorMigration;
 use SqlToEloquent\Geracao\Geradores\GeradorModel;
-use SqlToEloquent\Geracao\Geradores\GeradorRequest;
-use SqlToEloquent\Geracao\Geradores\GeradorResource;
-use SqlToEloquent\Geracao\Geradores\GeradorRotas;
 use SqlToEloquent\Geracao\Geradores\GeradorSeeder;
-use SqlToEloquent\Geracao\Geradores\GeradorTeste;
 use SqlToEloquent\Planejamento\OpcoesGeracao;
 
 class Orquestrador
@@ -24,13 +19,8 @@ class Orquestrador
         $this->geradores = [
             new GeradorMigration,
             new GeradorModel,
-            new GeradorFactory,
-            new GeradorSeeder,
             new GeradorController,
-            new GeradorRequest,
-            new GeradorResource,
-            new GeradorRotas,
-            new GeradorTeste,
+            new GeradorSeeder,
         ];
     }
 
