@@ -40,4 +40,62 @@ class Schema
     {
         return $this->insercoes !== [];
     }
+
+    /**
+     * @param  list<string>  $nomes
+     */
+    public function filtrarTabelas(array $nomes): self
+    {
+        if ($nomes === []) {
+            return $this;
+        }
+
+        $permitidas = array_fill_keys($nomes, true);
+
+        return new self(
+            tabelas: array_values(array_filter(
+                $this->tabelas,
+                fn (Tabela $tabela) => isset($permitidas[$tabela->nome]),
+            )),
+            insercoes: array_values(array_filter(
+                $this->insercoes,
+                fn (Insercao $insercao) => isset($permitidas[$insercao->tabela]),
+            )),
+            avisos: $this->avisos,
+            origem: $this->origem,
+        );
+    }
+
+    public function totalColunas(): int
+    {
+        $total = 0;
+
+        foreach ($this->tabelas as $tabela) {
+            $total += count($tabela->colunas);
+        }
+
+        return $total;
+    }
+
+    public function totalForeignKeys(): int
+    {
+        $total = 0;
+
+        foreach ($this->tabelas as $tabela) {
+            $total += count($tabela->chavesEstrangeiras);
+        }
+
+        return $total;
+    }
+
+    public function totalLinhasInsert(): int
+    {
+        $total = 0;
+
+        foreach ($this->insercoes as $insercao) {
+            $total += count($insercao->linhas);
+        }
+
+        return $total;
+    }
 }

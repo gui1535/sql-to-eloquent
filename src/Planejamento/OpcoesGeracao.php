@@ -9,6 +9,7 @@ class OpcoesGeracao
     /**
      * @param  list<TipoArtefato>  $artefatos
      * @param  array<string, string>  $caminhos
+     * @param  list<string>|null  $tabelas
      */
     public function __construct(
         public readonly array $artefatos,
@@ -16,6 +17,7 @@ class OpcoesGeracao
         public readonly bool $sobrescrever = false,
         public readonly string $namespaceModels = 'App\\Models',
         public readonly string $namespaceControllers = 'App\\Http\\Controllers',
+        public readonly ?array $tabelas = null,
     ) {
     }
 

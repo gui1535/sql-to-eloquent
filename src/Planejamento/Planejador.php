@@ -14,6 +14,10 @@ class Planejador
 
     public function montar(Schema $schema, OpcoesGeracao $opcoes): PlanoGeracao
     {
+        if ($opcoes->tabelas !== null) {
+            $schema = $schema->filtrarTabelas($opcoes->tabelas);
+        }
+
         $arquivos = $this->orquestrador->gerar($schema, $opcoes);
         $avisos = $schema->avisos;
 
