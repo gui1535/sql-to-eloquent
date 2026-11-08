@@ -1,8 +1,27 @@
 {
-    "name": "sql-to-eloquent/sql-to-eloquent",
+    "name": "gui1535/sql-to-eloquent",
     "description": "Gera artefatos Laravel a partir de schemas SQL MySQL/MariaDB",
     "type": "library",
     "license": "MIT",
+    "authors": [
+        {
+            "name": "Guilherme",
+            "email": "guilherme.araujo1535@gmail.com"
+        }
+    ],
+    "keywords": [
+        "laravel",
+        "eloquent",
+        "mysql",
+        "mariadb",
+        "migration",
+        "sql"
+    ],
+    "homepage": "https://github.com/gui1535/sql-to-eloquent",
+    "support": {
+        "issues": "https://github.com/gui1535/sql-to-eloquent/issues",
+        "source": "https://github.com/gui1535/sql-to-eloquent"
+    },
     "require": {
         "php": "^8.2",
         "illuminate/console": "^11.0|^12.0",

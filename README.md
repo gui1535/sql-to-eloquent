@@ -12,7 +12,7 @@ A biblioteca interpreta dumps MySQL/MariaDB (sem executá-los) e cria migrations
 ## Instalação
 
 ```bash
-composer require sql-to-eloquent/sql-to-eloquent
+composer require gui1535/sql-to-eloquent
 ```
 
 O service provider é registrado automaticamente.
