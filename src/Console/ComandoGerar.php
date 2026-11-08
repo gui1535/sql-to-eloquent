@@ -13,24 +13,32 @@ use SqlToEloquent\Planejamento\PlanoGeracao;
 use SqlToEloquent\Validacao\Validador;
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\multiselect;
+use function Laravel\Prompts\select;
 
 class ComandoGerar extends Command
 {
     protected $signature = 'sql:gerar
         {arquivo : Caminho do arquivo SQL}
         {--artefatos= : migrations,models,controllers,seeders}
-        {--tabelas= : Filtra tabelas (separadas por virgula)}
-        {--dir-migrations= : Diretorio de saida das migrations}
-        {--dir-models= : Diretorio de saida dos models}
-        {--dir-controllers= : Diretorio de saida dos controllers}
-        {--dir-seeders= : Diretorio de saida dos seeders}
+        {--tabelas= : Filtra tabelas (separadas por vírgula)}
+        {--tabelas-crud= : Tabelas com controller CRUD e Form Requests}
+        {--soft-deletes : Ativa SoftDeletes nas tabelas incluídas}
+        {--sem-soft-delete= : Tabelas sem SoftDeletes (com --soft-deletes)}
+        {--tabelas-soft-delete= : Tabelas com SoftDeletes (lista explícita)}
+        {--tabela-users= : Tabela de autenticação (ex: users ou usuarios)}
+        {--dir-migrations= : Diretório de saída das migrations}
+        {--dir-models= : Diretório de saída dos models}
+        {--dir-controllers= : Diretório de saída dos controllers}
+        {--dir-requests= : Diretório de saída dos Form Requests}
+        {--dir-seeders= : Diretório de saída dos seeders}
         {--namespace-models= : Namespace dos models}
         {--namespace-controllers= : Namespace dos controllers}
+        {--namespace-requests= : Namespace dos Form Requests}
         {--sobrescrever : Sobrescreve arquivos existentes}
         {--dry-run : Mostra o plano sem gravar arquivos}
-        {--sem-interacao : Nao faz perguntas}';
+        {--sem-interacao : Não faz perguntas}';
 
-    protected $description = 'Gera migrations, models e controllers CRUD a partir de um schema SQL';
+    protected $description = 'Gera migrations, models, Form Requests e controllers CRUD a partir de um schema SQL';
 
     public function handle(
         AnalisadorMysql $analisador,
@@ -66,7 +74,7 @@ class ComandoGerar extends Command
         $this->exibirPrevia($plano, $opcoes);
 
         if ($plano->total() === 0) {
-            $this->components->warn('Nenhum arquivo para gerar com as opcoes atuais.');
+            $this->components->warn('Nenhum arquivo para gerar com as opções atuais.');
 
             return self::SUCCESS;
         }
@@ -80,7 +88,7 @@ class ComandoGerar extends Command
         if ($plano->totalConflitos() > 0 && ! $opcoes->sobrescrever) {
             if ($this->modoInterativo()) {
                 if (! confirm('Existem conflitos. Sobrescrever arquivos existentes?', false)) {
-                    $this->components->warn('Operacao cancelada.');
+                    $this->components->warn('Operação cancelada.');
 
                     return self::SUCCESS;
                 }
@@ -97,7 +105,7 @@ class ComandoGerar extends Command
         }
 
         if ($this->modoInterativo() && ! confirm('Gravar '.$plano->total().' arquivo(s)?', true)) {
-            $this->components->warn('Operacao cancelada.');
+            $this->components->warn('Operação cancelada.');
 
             return self::SUCCESS;
         }
@@ -105,7 +113,7 @@ class ComandoGerar extends Command
         $erros = $validador->validar($plano);
 
         if ($erros !== []) {
-            $this->components->error('Validacao falhou:');
+            $this->components->error('Validação falhou:');
             foreach ($erros as $erro) {
                 $this->line("  <fg=red>-</> {$erro}");
             }
@@ -122,16 +130,25 @@ class ComandoGerar extends Command
     private function montarOpcoes(Schema $schema): OpcoesGeracao
     {
         $config = config('sql-to-eloquent', []);
+        $tabelas = $this->resolverTabelas($schema);
+        $artefatos = $this->resolverArtefatos($schema, $config);
+        $tabelasCrud = $this->resolverTabelasCrud($schema, $tabelas, $artefatos);
+        $tabelasSoftDelete = $this->resolverTabelasSoftDelete($schema, $tabelas, $artefatos, $config);
 
         return new OpcoesGeracao(
-            artefatos: $this->resolverArtefatos($schema, $config),
+            artefatos: $artefatos,
             caminhos: $this->resolverCaminhos($config),
             sobrescrever: (bool) $this->option('sobrescrever') || ($config['sobrescrever'] ?? false),
             namespaceModels: (string) ($this->option('namespace-models')
                 ?: ($config['namespace_models'] ?? 'App\\Models')),
             namespaceControllers: (string) ($this->option('namespace-controllers')
                 ?: ($config['namespace_controllers'] ?? 'App\\Http\\Controllers')),
-            tabelas: $this->resolverTabelas($schema),
+            namespaceRequests: (string) ($this->option('namespace-requests')
+                ?: ($config['namespace_requests'] ?? 'App\\Http\\Requests')),
+            tabelas: $tabelas,
+            tabelaUsers: $this->resolverTabelaUsers($schema, $tabelas, $config),
+            tabelasCrud: $tabelasCrud,
+            tabelasSoftDelete: $tabelasSoftDelete,
         );
     }
 
@@ -144,14 +161,14 @@ class ComandoGerar extends Command
         $opcao = $this->option('artefatos');
 
         if (is_string($opcao) && $opcao !== '') {
-            return $this->parseArtefatos($opcao);
+            return $this->comRequestsDoCrud($this->parseArtefatos($opcao));
         }
 
         if ($this->modoInterativo()) {
             return $this->perguntarArtefatos($schema, $config);
         }
 
-        return $this->artefatosDaConfig($schema, $config);
+        return $this->comRequestsDoCrud($this->artefatosDaConfig($schema, $config));
     }
 
     /**
@@ -164,6 +181,10 @@ class ComandoGerar extends Command
         $padrao = [];
 
         foreach (TipoArtefato::cases() as $tipo) {
+            if ($tipo === TipoArtefato::Request) {
+                continue;
+            }
+
             if ($tipo === TipoArtefato::Seeder && ! $schema->temDados()) {
                 continue;
             }
@@ -180,19 +201,19 @@ class ComandoGerar extends Command
         }
 
         $escolhidos = multiselect(
-            label: 'Quais artefatos deseja gerar?',
+            label: 'O que deseja gerar?',
             options: $opcoes,
             default: $padrao,
             required: true,
-            hint: 'Espaco marca, Enter confirma',
+            hint: 'Espaço marca, Enter confirma',
         );
 
-        return array_values(array_filter(
+        return $this->comRequestsDoCrud(array_values(array_filter(
             array_map(
                 fn (string $valor) => TipoArtefato::tryFrom($valor),
                 $escolhidos,
             ),
-        ));
+        )));
     }
 
     /**
@@ -204,6 +225,10 @@ class ComandoGerar extends Command
         $selecionados = [];
 
         foreach (TipoArtefato::cases() as $tipo) {
+            if ($tipo === TipoArtefato::Request) {
+                continue;
+            }
+
             if (($config['artefatos'][$tipo->value] ?? false) !== true) {
                 continue;
             }
@@ -216,6 +241,22 @@ class ComandoGerar extends Command
         }
 
         return $selecionados;
+    }
+
+    /**
+     * @param  list<TipoArtefato>  $artefatos
+     * @return list<TipoArtefato>
+     */
+    private function comRequestsDoCrud(array $artefatos): array
+    {
+        if (
+            in_array(TipoArtefato::Controller, $artefatos, true)
+            && ! in_array(TipoArtefato::Request, $artefatos, true)
+        ) {
+            $artefatos[] = TipoArtefato::Request;
+        }
+
+        return array_values($artefatos);
     }
 
     /** @return list<TipoArtefato> */
@@ -250,7 +291,7 @@ class ComandoGerar extends Command
             options: array_combine($nomes, $nomes),
             default: $nomes,
             required: true,
-            hint: 'Deixe todas marcadas para gerar o schema completo',
+            hint: 'Define o escopo de migrations, models e seeders',
         );
 
         if (count($escolhidas) === count($nomes)) {
@@ -258,6 +299,165 @@ class ComandoGerar extends Command
         }
 
         return array_values($escolhidas);
+    }
+
+    /**
+     * @param  list<string>|null  $tabelas
+     * @param  list<TipoArtefato>  $artefatos
+     * @return list<string>|null
+     */
+    private function resolverTabelasCrud(Schema $schema, ?array $tabelas, array $artefatos): ?array
+    {
+        $temCrud = in_array(TipoArtefato::Controller, $artefatos, true)
+            || in_array(TipoArtefato::Request, $artefatos, true);
+
+        if (! $temCrud) {
+            return null;
+        }
+
+        $candidatas = $tabelas ?? $schema->nomesTabelas();
+        $opcao = $this->option('tabelas-crud');
+
+        if (is_string($opcao) && $opcao !== '') {
+            $escolhidas = array_values(array_filter(array_map('trim', explode(',', $opcao))));
+
+            return array_values(array_intersect($escolhidas, $candidatas));
+        }
+
+        if ($candidatas === []) {
+            return [];
+        }
+
+        if (! $this->modoInterativo()) {
+            return null;
+        }
+
+        if (count($candidatas) === 1) {
+            return $candidatas;
+        }
+
+        $escolhidas = multiselect(
+            label: 'Quais tabelas devem ter Controllers CRUD?',
+            options: array_combine($candidatas, $candidatas),
+            default: $candidatas,
+            required: true,
+            hint: 'Cada tabela marcada gera Controller + Store/Update Form Request',
+        );
+
+        if (count($escolhidas) === count($candidatas)) {
+            return null;
+        }
+
+        return array_values($escolhidas);
+    }
+
+    /**
+     * @param  list<string>|null  $tabelas
+     * @param  array<string, mixed>  $config
+     */
+    private function resolverTabelaUsers(Schema $schema, ?array $tabelas, array $config): ?string
+    {
+        $opcao = $this->option('tabela-users');
+
+        if (is_string($opcao) && $opcao !== '') {
+            return $opcao === 'nenhuma' ? null : $opcao;
+        }
+
+        if (array_key_exists('tabela_users', $config) && is_string($config['tabela_users']) && $config['tabela_users'] !== '') {
+            return $config['tabela_users'];
+        }
+
+        $candidatas = $tabelas ?? $schema->nomesTabelas();
+        $sugestao = $this->sugerirTabelaUsers($candidatas);
+
+        if (! $this->modoInterativo()) {
+            return $sugestao;
+        }
+
+        $opcoes = ['nenhuma' => 'Nenhuma (não gerar model User de autenticação)'];
+
+        foreach ($candidatas as $nome) {
+            $opcoes[$nome] = $nome;
+        }
+
+        $padrao = ($sugestao !== null && isset($opcoes[$sugestao])) ? $sugestao : 'nenhuma';
+
+        $escolhida = select(
+            label: 'Qual tabela é a de usuários/autenticação do Laravel?',
+            options: $opcoes,
+            default: $padrao,
+            hint: 'Essa tabela vira App\\Models\\User (Authenticatable) e sobrescreve o User padrão',
+        );
+
+        return $escolhida === 'nenhuma' ? null : $escolhida;
+    }
+
+    /**
+     * @param  list<string>|null  $tabelas
+     * @param  list<TipoArtefato>  $artefatos
+     * @param  array<string, mixed>  $config
+     * @return list<string>
+     */
+    private function resolverTabelasSoftDelete(
+        Schema $schema,
+        ?array $tabelas,
+        array $artefatos,
+        array $config,
+    ): array {
+        $relevante = in_array(TipoArtefato::Migration, $artefatos, true)
+            || in_array(TipoArtefato::Model, $artefatos, true);
+
+        if (! $relevante) {
+            return [];
+        }
+
+        $candidatas = $tabelas ?? $schema->nomesTabelas();
+
+        $opcaoLista = $this->option('tabelas-soft-delete');
+
+        if (is_string($opcaoLista) && $opcaoLista !== '') {
+            $escolhidas = array_values(array_filter(array_map('trim', explode(',', $opcaoLista))));
+
+            return array_values(array_intersect($escolhidas, $candidatas));
+        }
+
+        $padrao = (bool) $this->option('soft-deletes') || ($config['soft_deletes'] ?? false) === true;
+        $ativar = $this->modoInterativo()
+            ? confirm('Usar SoftDeletes?', $padrao)
+            : $padrao;
+
+        if (! $ativar) {
+            return [];
+        }
+
+        $excluidas = [];
+        $opcaoExcluir = $this->option('sem-soft-delete');
+
+        if (is_string($opcaoExcluir) && $opcaoExcluir !== '') {
+            $excluidas = array_values(array_filter(array_map('trim', explode(',', $opcaoExcluir))));
+        } elseif ($this->modoInterativo() && count($candidatas) > 1) {
+            $excluidas = multiselect(
+                label: 'Quais tabelas NÃO devem ter SoftDeletes?',
+                options: array_combine($candidatas, $candidatas),
+                default: [],
+                required: false,
+                hint: 'Deixe vazio para aplicar em todas. Espaço marca, Enter confirma',
+            );
+        }
+
+        return array_values(array_diff($candidatas, $excluidas));
+    }
+
+    /** @param  list<string>  $candidatas */
+    private function sugerirTabelaUsers(array $candidatas): ?string
+    {
+        foreach (['users', 'usuarios', 'user'] as $candidato) {
+            if (in_array($candidato, $candidatas, true)) {
+                return $candidato;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -272,6 +472,7 @@ class ComandoGerar extends Command
             'migrations' => 'dir-migrations',
             'models' => 'dir-models',
             'controllers' => 'dir-controllers',
+            'requests' => 'dir-requests',
             'seeders' => 'dir-seeders',
         ];
 
@@ -294,7 +495,11 @@ class ComandoGerar extends Command
             sobrescrever: true,
             namespaceModels: $opcoes->namespaceModels,
             namespaceControllers: $opcoes->namespaceControllers,
+            namespaceRequests: $opcoes->namespaceRequests,
             tabelas: $opcoes->tabelas,
+            tabelaUsers: $opcoes->tabelaUsers,
+            tabelasCrud: $opcoes->tabelasCrud,
+            tabelasSoftDelete: $opcoes->tabelasSoftDelete,
         );
     }
 
@@ -330,7 +535,7 @@ class ComandoGerar extends Command
     private function exibirPrevia(PlanoGeracao $plano, OpcoesGeracao $opcoes): void
     {
         $this->newLine();
-        $this->components->info("Plano de geracao ({$plano->total()} arquivo(s))");
+        $this->components->info("Plano de geração ({$plano->total()} arquivo(s))");
 
         $artefatos = array_map(
             fn (TipoArtefato $tipo) => $tipo->rotulo(),
@@ -342,6 +547,23 @@ class ComandoGerar extends Command
             $this->line('  Tabelas: <fg=cyan>'.implode(', ', $opcoes->tabelas).'</>');
         }
 
+        if ($opcoes->inclui(TipoArtefato::Controller)) {
+            $crud = $opcoes->tabelasCrud === null
+                ? 'todas as tabelas incluídas'
+                : ($opcoes->tabelasCrud === []
+                    ? 'nenhuma'
+                    : implode(', ', $opcoes->tabelasCrud));
+            $this->line("  CRUD: <fg=cyan>{$crud}</>");
+        }
+
+        if ($opcoes->tabelasSoftDelete !== []) {
+            $this->line('  SoftDeletes: <fg=cyan>'.implode(', ', $opcoes->tabelasSoftDelete).'</>');
+        }
+
+        if ($opcoes->tabelaUsers !== null) {
+            $this->line("  Tabela users: <fg=cyan>{$opcoes->tabelaUsers}</> → <fg=cyan>User</>");
+        }
+
         $this->newLine();
 
         foreach ($plano->porTipo() as $tipo => $arquivos) {
@@ -350,9 +572,11 @@ class ComandoGerar extends Command
 
             foreach ($arquivos as $arquivo) {
                 if ($arquivo->conflito) {
-                    $this->line("    <fg=red>conflito</> {$arquivo->caminho}");
+                    $this->line("    <fg=red>conflito</>   {$arquivo->caminho}");
+                } elseif (is_file($arquivo->caminho)) {
+                    $this->line("    <fg=cyan>substituir</> {$arquivo->caminho}");
                 } else {
-                    $this->line("    <fg=green>novo</>     {$arquivo->caminho}");
+                    $this->line("    <fg=green>novo</>       {$arquivo->caminho}");
                 }
             }
 
@@ -360,7 +584,7 @@ class ComandoGerar extends Command
         }
 
         if ($plano->totalConflitos() > 0) {
-            $this->components->warn("{$plano->totalConflitos()} arquivo(s) ja existem e serao ignorados sem --sobrescrever.");
+            $this->components->warn("{$plano->totalConflitos()} arquivo(s) já existem e serão ignorados sem --sobrescrever.");
         }
 
         $this->exibirAvisos($plano->avisos);
@@ -373,7 +597,7 @@ class ComandoGerar extends Command
     private function exibirResumoFinal(array $resultado, array $avisos): void
     {
         $this->newLine();
-        $this->components->info('Geracao concluida');
+        $this->components->info('Geração concluída');
         $this->components->twoColumnDetail('Criados', (string) count($resultado['criados']));
         $this->components->twoColumnDetail('Ignorados', (string) count($resultado['ignorados']));
 

@@ -13,41 +13,78 @@ class ConstrutorModel
     ) {
     }
 
-    public function nomeArquivo(string $tabela): string
+    public function nomeArquivo(string $tabela, ?string $tabelaUsers = null): string
     {
-        return $this->nomeador->classe($tabela).'.php';
+        return $this->nomeador->classe($tabela, $tabelaUsers).'.php';
     }
 
     /**
      * @param  list<Relacionamento>  $relacionamentos
      */
-    public function montar(Tabela $tabela, string $namespace, array $relacionamentos = []): string
-    {
-        $classe = $this->nomeador->classe($tabela->nome);
-        $corpo = $this->corpo($tabela, $relacionamentos);
-        $imports = $this->montarImports($relacionamentos);
+    public function montar(
+        Tabela $tabela,
+        string $namespace,
+        array $relacionamentos = [],
+        ?string $tabelaUsers = null,
+        bool $softDelete = false,
+    ): string {
+        $classe = $this->nomeador->classe($tabela->nome, $tabelaUsers);
+        $ehUsers = $this->nomeador->ehTabelaUsers($tabela->nome, $tabelaUsers);
+        $corpo = $this->corpo($tabela, $relacionamentos, $ehUsers, $softDelete);
+        $imports = $this->montarImports($relacionamentos, $softDelete);
         $blocoImports = $imports === '' ? '' : $imports."\n";
+        $extends = $ehUsers ? 'Authenticatable' : 'Model';
+        $traits = $this->traits($ehUsers, $softDelete);
+
+        $useBase = $ehUsers
+            ? "use Illuminate\\Foundation\\Auth\\User as Authenticatable;\nuse Illuminate\\Notifications\\Notifiable;"
+            : 'use Illuminate\\Database\\Eloquent\\Model;';
 
         return <<<PHP
 <?php
 
 namespace {$namespace};
 
-use Illuminate\Database\Eloquent\Model;
+{$useBase}
 {$blocoImports}
-class {$classe} extends Model
-{
+class {$classe} extends {$extends}
+{{$traits}
 {$corpo}
 }
 
 PHP;
     }
 
+    private function traits(bool $ehUsers, bool $softDelete): string
+    {
+        $usados = [];
+
+        if ($ehUsers) {
+            $usados[] = 'Notifiable';
+        }
+
+        if ($softDelete) {
+            $usados[] = 'SoftDeletes';
+        }
+
+        if ($usados === []) {
+            return '';
+        }
+
+        return "\n    use ".implode(', ', $usados).";\n";
+    }
+
     /**
      * @param  list<Relacionamento>  $relacionamentos
      */
-    private function montarImports(array $relacionamentos): string
+    private function montarImports(array $relacionamentos, bool $softDelete): string
     {
+        $linhas = [];
+
+        if ($softDelete) {
+            $linhas[] = 'use Illuminate\\Database\\Eloquent\\SoftDeletes;';
+        }
+
         $tipos = [];
 
         foreach ($relacionamentos as $rel) {
@@ -60,13 +97,13 @@ PHP;
 
         ksort($tipos);
 
-        return implode("\n", array_values($tipos));
+        return implode("\n", [...$linhas, ...array_values($tipos)]);
     }
 
     /**
      * @param  list<Relacionamento>  $relacionamentos
      */
-    private function corpo(Tabela $tabela, array $relacionamentos): string
+    private function corpo(Tabela $tabela, array $relacionamentos, bool $ehUsers, bool $softDelete): string
     {
         $blocos = [];
 
@@ -93,7 +130,7 @@ PHP;
             $blocos[] = $linha;
         }
 
-        $fillable = $this->fillable($tabela);
+        $fillable = $this->fillable($tabela, $softDelete);
         if ($fillable !== []) {
             $blocos[] = $this->arrayPropriedade('fillable', $fillable);
         }
@@ -103,7 +140,7 @@ PHP;
             $blocos[] = $this->arrayPropriedade('hidden', $hidden);
         }
 
-        $casts = $this->casts($tabela);
+        $casts = $this->casts($tabela, $ehUsers);
         if ($casts !== []) {
             $blocos[] = $this->arrayAssociativo('casts', $casts);
         }
@@ -133,13 +170,17 @@ PHP;
     }
 
     /** @return list<string> */
-    private function fillable(Tabela $tabela): array
+    private function fillable(Tabela $tabela, bool $softDelete): array
     {
-        $excluir = ['id', 'created_at', 'updated_at', 'criado_em', 'atualizado_em', 'remember_token'];
+        $excluir = ['id', 'created_at', 'updated_at', 'criado_em', 'atualizado_em', 'remember_token', 'deleted_at'];
         $campos = [];
 
         foreach ($tabela->colunas as $coluna) {
             if (in_array($coluna->nome, $excluir, true)) {
+                continue;
+            }
+
+            if ($softDelete && $coluna->nome === 'deleted_at') {
                 continue;
             }
 
@@ -168,12 +209,12 @@ PHP;
     }
 
     /** @return array<string, string> */
-    private function casts(Tabela $tabela): array
+    private function casts(Tabela $tabela, bool $ehUsers): array
     {
         $casts = [];
 
         foreach ($tabela->colunas as $coluna) {
-            $cast = $this->castColuna($coluna);
+            $cast = $this->castColuna($coluna, $ehUsers);
 
             if ($cast !== null) {
                 $casts[$coluna->nome] = $cast;
@@ -183,8 +224,12 @@ PHP;
         return $casts;
     }
 
-    private function castColuna(Coluna $coluna): ?string
+    private function castColuna(Coluna $coluna, bool $ehUsers): ?string
     {
+        if ($ehUsers && in_array($coluna->nome, ['password', 'senha'], true)) {
+            return 'hashed';
+        }
+
         if (
             in_array($coluna->tipo, ['boolean', 'bool'], true)
             || ($coluna->tipo === 'tinyint' && $coluna->tamanho === 1)

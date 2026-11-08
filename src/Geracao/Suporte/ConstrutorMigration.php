@@ -22,9 +22,9 @@ class ConstrutorMigration
         return "2020_01_01_{$sequencia}_create_{$tabela}_table.php";
     }
 
-    public function montar(Tabela $tabela): string
+    public function montar(Tabela $tabela, bool $softDelete = false): string
     {
-        $linhas = $this->linhasBlueprint($tabela);
+        $linhas = $this->linhasBlueprint($tabela, $softDelete);
         $corpo = implode("\n", array_map(
             fn (string $linha) => '            '.$linha,
             $linhas,
@@ -56,12 +56,13 @@ PHP;
     }
 
     /** @return list<string> */
-    private function linhasBlueprint(Tabela $tabela): array
+    private function linhasBlueprint(Tabela $tabela, bool $softDelete): array
     {
         $linhas = [];
         $ignoradas = [];
         $pk = $tabela->chavePrimaria;
         $timestampsPendentes = $this->temTimestamps($tabela);
+        $softDeleteAdicionado = false;
 
         if ($this->usarId($tabela)) {
             $linhas[] = '$table->id();';
@@ -85,12 +86,22 @@ PHP;
                 continue;
             }
 
+            if ($coluna->nome === 'deleted_at') {
+                $linhas[] = '$table->softDeletes();';
+                $softDeleteAdicionado = true;
+                continue;
+            }
+
             if ($coluna->nome === 'remember_token') {
                 $linhas[] = '$table->rememberToken();';
                 continue;
             }
 
             $linhas[] = $this->linhaColuna($coluna);
+        }
+
+        if ($softDelete && ! $softDeleteAdicionado) {
+            $linhas[] = '$table->softDeletes();';
         }
 
         if (

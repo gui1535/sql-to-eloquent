@@ -22,6 +22,7 @@ class GeradorModelTest extends TestCase
                 artefatos: [TipoArtefato::Model],
                 caminhos: ['models' => '/tmp/Models'],
                 namespaceModels: 'App\\Models',
+                tabelaUsers: 'usuarios',
             ),
         );
 
@@ -37,7 +38,8 @@ class GeradorModelTest extends TestCase
 
         $usuario = $porTabela['usuarios'];
         $this->assertStringContainsString('namespace App\\Models;', $usuario);
-        $this->assertStringContainsString('class Usuario extends Model', $usuario);
+        $this->assertStringContainsString('class User extends Authenticatable', $usuario);
+        $this->assertStringContainsString('use Notifiable;', $usuario);
         $this->assertStringContainsString("protected \$table = 'usuarios';", $usuario);
         $this->assertStringContainsString("public const CREATED_AT = 'criado_em';", $usuario);
         $this->assertStringContainsString("public const UPDATED_AT = 'atualizado_em';", $usuario);
@@ -45,6 +47,7 @@ class GeradorModelTest extends TestCase
         $this->assertStringContainsString("'senha',", $usuario);
         $this->assertStringContainsString("protected \$hidden = [", $usuario);
         $this->assertStringContainsString("'ativo' => 'boolean'", $usuario);
+        $this->assertStringContainsString("'senha' => 'hashed'", $usuario);
         $this->assertStringContainsString('function pedidos(): HasMany', $usuario);
         $this->assertStringContainsString("return \$this->hasMany(Pedido::class, 'usuario_id', 'id');", $usuario);
 
@@ -52,7 +55,7 @@ class GeradorModelTest extends TestCase
         $this->assertStringContainsString('class Pedido extends Model', $pedido);
         $this->assertStringContainsString('public $timestamps = false;', $pedido);
         $this->assertStringContainsString('function usuario(): BelongsTo', $pedido);
-        $this->assertStringContainsString("return \$this->belongsTo(Usuario::class, 'usuario_id', 'id');", $pedido);
+        $this->assertStringContainsString("return \$this->belongsTo(User::class, 'usuario_id', 'id');", $pedido);
         $this->assertStringContainsString('function itensPedido(): HasMany', $pedido);
 
         $item = $porTabela['itens_pedido'];
@@ -60,6 +63,29 @@ class GeradorModelTest extends TestCase
         $this->assertStringContainsString('function pedido(): BelongsTo', $item);
         $this->assertStringContainsString('function produto(): BelongsTo', $item);
         $this->assertStringContainsString("'quantidade',", $item);
+    }
+
+    public function test_aplica_soft_deletes_quando_solicitado(): void
+    {
+        $schema = (new AnalisadorMysql)->analisar(<<<'SQL'
+            CREATE TABLE posts (
+              id bigint unsigned NOT NULL AUTO_INCREMENT,
+              titulo varchar(255) NOT NULL,
+              PRIMARY KEY (id)
+            );
+        SQL);
+
+        $arquivo = (new GeradorModel)->gerar(
+            $schema,
+            new OpcoesGeracao(
+                artefatos: [TipoArtefato::Model],
+                caminhos: ['models' => 'app/Models'],
+                tabelasSoftDelete: ['posts'],
+            ),
+        )[0];
+
+        $this->assertStringContainsString('use Illuminate\\Database\\Eloquent\\SoftDeletes;', $arquivo->conteudo);
+        $this->assertStringContainsString('use SoftDeletes;', $arquivo->conteudo);
     }
 
     public function test_detecta_has_one_quando_fk_unica(): void

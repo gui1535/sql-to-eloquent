@@ -27,13 +27,19 @@ class GeradorController implements ContratoGerador
         $arquivos = [];
 
         foreach ($schema->tabelas as $tabela) {
+            if (! $opcoes->incluiTabelaCrud($tabela->nome)) {
+                continue;
+            }
+
             $arquivos[] = new ArquivoPlanejado(
                 tipo: TipoArtefato::Controller,
-                caminho: $diretorio.'/'.$this->construtor->nomeArquivo($tabela->nome),
+                caminho: $diretorio.'/'.$this->construtor->nomeArquivo($tabela->nome, $opcoes->tabelaUsers),
                 conteudo: $this->construtor->montar(
                     $tabela,
                     $opcoes->namespaceControllers,
                     $opcoes->namespaceModels,
+                    $opcoes->namespaceRequests,
+                    $opcoes->tabelaUsers,
                 ),
                 tabela: $tabela->nome,
             );

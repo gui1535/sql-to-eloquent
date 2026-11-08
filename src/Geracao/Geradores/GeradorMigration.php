@@ -35,7 +35,10 @@ class GeradorMigration implements ContratoGerador
             $arquivos[] = new ArquivoPlanejado(
                 tipo: TipoArtefato::Migration,
                 caminho: $diretorio.'/'.$nomeArquivo,
-                conteudo: $this->construtor->montar($tabela),
+                conteudo: $this->construtor->montar(
+                    $tabela,
+                    $opcoes->incluiSoftDelete($tabela->nome),
+                ),
                 tabela: $tabela->nome,
             );
         }

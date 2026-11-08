@@ -23,17 +23,16 @@ Cada tabela gera um model com:
   - `hasMany`
   - `hasOne` (quando a FK é única)
 
-## Controllers
+## Controllers e Form Requests
 
-Controllers CRUD com:
+Controllers CRUD com `index`, `store`, `show`, `update` e `destroy`.
 
-- `index`
-- `store`
-- `show`
-- `update`
-- `destroy`
+A validação fica em:
 
-A validação é montada com base nas colunas da tabela.
+- `Store{Model}Request`
+- `Update{Model}Request`
+
+Se você escolher a tabela de users, o model vira `User` (`Authenticatable`) com `$table` apontando para a tabela real (ex.: `usuarios`).
 
 As rotas **não** são geradas. Você registra os endpoints no projeto, por exemplo:
 

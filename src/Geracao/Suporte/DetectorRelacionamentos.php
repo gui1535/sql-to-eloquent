@@ -16,7 +16,7 @@ class DetectorRelacionamentos
     /**
      * @return array<string, list<Relacionamento>>
      */
-    public function detectar(Schema $schema): array
+    public function detectar(Schema $schema, ?string $tabelaUsers = null): array
     {
         $porTabela = [];
 
@@ -32,8 +32,8 @@ class DetectorRelacionamentos
 
                 $colunaFk = $fk->colunas[0];
                 $colunaRef = $fk->colunasReferenciadas[0];
-                $modeloDono = $this->nomeador->classe($fk->tabelaReferenciada);
-                $modeloFilho = $this->nomeador->classe($tabela->nome);
+                $modeloDono = $this->nomeador->classe($fk->tabelaReferenciada, $tabelaUsers);
+                $modeloFilho = $this->nomeador->classe($tabela->nome, $tabelaUsers);
 
                 $porTabela[$tabela->nome][] = new Relacionamento(
                     tabela: $tabela->nome,

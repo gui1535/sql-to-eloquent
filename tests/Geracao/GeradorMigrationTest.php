@@ -58,6 +58,28 @@ class GeradorMigrationTest extends TestCase
         }
     }
 
+    public function test_adiciona_soft_deletes_quando_solicitado(): void
+    {
+        $schema = (new AnalisadorMysql)->analisar(<<<'SQL'
+            CREATE TABLE posts (
+              id bigint unsigned NOT NULL AUTO_INCREMENT,
+              titulo varchar(255) NOT NULL,
+              PRIMARY KEY (id)
+            );
+        SQL);
+
+        $arquivo = (new GeradorMigration)->gerar(
+            $schema,
+            new OpcoesGeracao(
+                artefatos: [TipoArtefato::Migration],
+                caminhos: ['migrations' => 'database/migrations'],
+                tabelasSoftDelete: ['posts'],
+            ),
+        )[0];
+
+        $this->assertStringContainsString('$table->softDeletes();', $arquivo->conteudo);
+    }
+
     public function test_usa_timestamps_quando_colunas_padrao_existem(): void
     {
         $schema = (new AnalisadorMysql)->analisar(<<<'SQL'

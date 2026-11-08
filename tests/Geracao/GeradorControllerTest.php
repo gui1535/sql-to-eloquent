@@ -10,7 +10,7 @@ use SqlToEloquent\Planejamento\OpcoesGeracao;
 
 class GeradorControllerTest extends TestCase
 {
-    public function test_gera_controller_crud_com_validacao(): void
+    public function test_gera_controller_crud_com_form_requests(): void
     {
         $schema = (new AnalisadorMysql)->analisarArquivo(
             __DIR__.'/../fixtures/schema_basico.sql'
@@ -23,6 +23,8 @@ class GeradorControllerTest extends TestCase
                 caminhos: ['controllers' => '/tmp/Controllers'],
                 namespaceModels: 'App\\Models',
                 namespaceControllers: 'App\\Http\\Controllers',
+                namespaceRequests: 'App\\Http\\Requests',
+                tabelaUsers: 'usuarios',
             ),
         );
 
@@ -35,17 +37,18 @@ class GeradorControllerTest extends TestCase
         $pedido = $porTabela['pedidos'];
         $this->assertStringContainsString('class PedidoController extends Controller', $pedido);
         $this->assertStringContainsString('use App\\Models\\Pedido;', $pedido);
-        $this->assertStringContainsString('public function index()', $pedido);
-        $this->assertStringContainsString('public function store(Request $request)', $pedido);
-        $this->assertStringContainsString('public function show(Pedido $pedido)', $pedido);
-        $this->assertStringContainsString('public function update(Request $request, Pedido $pedido)', $pedido);
-        $this->assertStringContainsString('public function destroy(Pedido $pedido)', $pedido);
-        $this->assertStringContainsString("'usuario_id' => 'required|integer'", $pedido);
-        $this->assertStringContainsString("'total' => 'required|numeric'", $pedido);
+        $this->assertStringContainsString('use App\\Http\\Requests\\StorePedidoRequest;', $pedido);
+        $this->assertStringContainsString('use App\\Http\\Requests\\UpdatePedidoRequest;', $pedido);
+        $this->assertStringContainsString('public function store(StorePedidoRequest $request)', $pedido);
+        $this->assertStringContainsString('public function update(UpdatePedidoRequest $request, Pedido $pedido)', $pedido);
+        $this->assertStringContainsString('$request->validated()', $pedido);
 
         $usuario = $porTabela['usuarios'];
-        $this->assertStringContainsString("'email' => 'required|string|max:255|email|unique:usuarios,email'", $usuario);
-        $this->assertStringContainsString("'ativo' => 'nullable|boolean'", $usuario);
+        $this->assertStringContainsString('class UserController extends Controller', $usuario);
+        $this->assertStringContainsString('use App\\Models\\User;', $usuario);
+        $this->assertStringContainsString('public function show(User $user)', $usuario);
+        $this->assertStringContainsString('StoreUserRequest', $usuario);
+        $this->assertStringContainsString('UpdateUserRequest', $usuario);
     }
 
     private function sintaxeValida(string $conteudo): bool

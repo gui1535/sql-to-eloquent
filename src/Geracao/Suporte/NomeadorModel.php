@@ -6,9 +6,27 @@ use Illuminate\Support\Str;
 
 class NomeadorModel
 {
-    public function classe(string $tabela): string
+    public function classe(string $tabela, ?string $tabelaUsers = null): string
     {
+        if ($tabelaUsers !== null && $tabela === $tabelaUsers) {
+            return 'User';
+        }
+
         return Str::studly($this->singular($tabela));
+    }
+
+    public function variavel(string $tabela, ?string $tabelaUsers = null): string
+    {
+        if ($tabelaUsers !== null && $tabela === $tabelaUsers) {
+            return 'user';
+        }
+
+        return Str::camel($this->singular($tabela));
+    }
+
+    public function ehTabelaUsers(string $tabela, ?string $tabelaUsers): bool
+    {
+        return $tabelaUsers !== null && $tabela === $tabelaUsers;
     }
 
     public function metodoBelongsTo(string $colunaFk, string $tabelaReferenciada): string

@@ -26,7 +26,7 @@ class GeradorModel implements ContratoGerador
     public function gerar(Schema $schema, OpcoesGeracao $opcoes): array
     {
         $diretorio = rtrim($opcoes->caminhos['models'] ?? 'app/Models', '/');
-        $relacionamentos = $this->detector->detectar($schema);
+        $relacionamentos = $this->detector->detectar($schema, $opcoes->tabelaUsers);
         $arquivos = [];
 
         foreach ($schema->tabelas as $tabela) {
@@ -34,11 +34,13 @@ class GeradorModel implements ContratoGerador
 
             $arquivos[] = new ArquivoPlanejado(
                 tipo: TipoArtefato::Model,
-                caminho: $diretorio.'/'.$this->construtor->nomeArquivo($tabela->nome),
+                caminho: $diretorio.'/'.$this->construtor->nomeArquivo($tabela->nome, $opcoes->tabelaUsers),
                 conteudo: $this->construtor->montar(
                     $tabela,
                     $opcoes->namespaceModels,
                     $rels,
+                    $opcoes->tabelaUsers,
+                    $opcoes->incluiSoftDelete($tabela->nome) || $tabela->coluna('deleted_at') !== null,
                 ),
                 tabela: $tabela->nome,
             );

@@ -7,8 +7,13 @@ php artisan sql:gerar {arquivo} [opções]
 | Opção | Descrição |
 | --- | --- |
 | `arquivo` | Caminho do arquivo SQL |
-| `--artefatos=` | Lista separada por vírgula: `migrations`, `models`, `controllers`, `seeders` |
+| `--artefatos=` | Lista separada por vírgula: `migrations`, `models`, `controllers`, `seeders` (`controllers` já inclui Form Requests) |
 | `--tabelas=` | Filtra tabelas (separadas por vírgula) |
+| `--tabelas-crud=` | Tabelas com Controller CRUD + Form Requests |
+| `--soft-deletes` | Ativa SoftDeletes nas tabelas incluídas |
+| `--sem-soft-delete=` | Tabelas sem SoftDeletes (usar com `--soft-deletes`) |
+| `--tabelas-soft-delete=` | Lista explícita de tabelas com SoftDeletes |
+| `--tabela-users=` | Tabela de autenticação (`users`, `usuarios` ou `nenhuma`) |
 | `--dir-migrations=` | Diretório de saída das migrations |
 | `--dir-models=` | Diretório de saída dos models |
 | `--dir-controllers=` | Diretório de saída dos controllers |
@@ -25,14 +30,14 @@ php artisan sql:gerar {arquivo} [opções]
 | --- | --- |
 | `migrations` | Migrations Laravel |
 | `models` | Models Eloquent |
-| `controllers` | Controllers CRUD |
+| `controllers` | Controllers CRUD + Form Requests |
 | `seeders` | Seeders (somente se houver `INSERT` no SQL) |
 
 ## Exemplos rápidos
 
 ```bash
-# só models e controllers
-php artisan sql:gerar dump.sql --artefatos=models,controllers --sem-interacao
+# models + CRUD só em pedidos
+php artisan sql:gerar dump.sql --artefatos=models,controllers --tabelas-crud=pedidos --sem-interacao
 
 # prévia sem gravar
 php artisan sql:gerar dump.sql --dry-run

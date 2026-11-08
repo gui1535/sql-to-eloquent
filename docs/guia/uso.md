@@ -9,10 +9,13 @@ php artisan sql:gerar caminho/para/schema.sql
 No modo interativo, o comando:
 
 1. Mostra um resumo do schema (tabelas, colunas, foreign keys e inserts)
-2. Pergunta quais artefatos gerar
-3. Permite filtrar tabelas
-4. Exibe o plano de arquivos (`novo` / `conflito`)
-5. Confirma antes de gravar
+2. Pergunta quais tabelas incluir
+3. Pergunta o que gerar (Controllers CRUD já incluem Form Requests)
+4. Se houver CRUD, pergunta quais tabelas devem ter controller + requests
+5. Pergunta se deseja SoftDeletes e quais tabelas excluir
+6. Pergunta qual tabela é a de usuários/autenticação
+7. Exibe o plano de arquivos (`novo` / `conflito` / `substituir`)
+8. Confirma antes de gravar
 
 ## Exemplos
 
