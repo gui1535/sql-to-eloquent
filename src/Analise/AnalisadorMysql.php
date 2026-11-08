@@ -196,13 +196,20 @@ class AnalisadorMysql
             }
         }
 
+        if ($this->ehView($tokens)) {
+            return [
+                ...$vazio,
+                'avisos' => ['CREATE VIEW ainda não é suportado e foi ignorado: '.$this->resumoStatement($tokens)],
+            ];
+        }
+
         if ($this->deveIgnorar($tokens)) {
             return $vazio;
         }
 
         return [
             ...$vazio,
-            'avisos' => ['Statement nao suportado e ignorado: '.$this->resumoStatement($tokens)],
+            'avisos' => ['Statement ainda não suportado e foi ignorado: '.$this->resumoStatement($tokens)],
         ];
     }
 
@@ -315,6 +322,18 @@ class AnalisadorMysql
     }
 
     /** @param list<Token> $tokens */
+    private function ehView(array $tokens): bool
+    {
+        foreach (array_slice($tokens, 0, 8) as $token) {
+            if ($token->eh(TiposToken::IDENTIFICADOR, 'VIEW')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @param list<Token> $tokens */
     private function deveIgnorar(array $tokens): bool
     {
         $primeiro = strtoupper($tokens[0]->valor);
@@ -329,7 +348,7 @@ class AnalisadorMysql
             return true;
         }
 
-        if ($primeiro === 'DROP' && in_array($segundo, ['TABLE', 'DATABASE', 'SCHEMA'], true)) {
+        if ($primeiro === 'DROP' && in_array($segundo, ['TABLE', 'DATABASE', 'SCHEMA', 'VIEW'], true)) {
             return true;
         }
 

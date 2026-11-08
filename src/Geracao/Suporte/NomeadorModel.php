@@ -78,6 +78,7 @@ class NomeadorModel
             '/ais$/' => 'al',
             '/eis$/' => 'el',
             '/ois$/' => 'ol',
+            '/ons$/' => 'om',
             '/ens$/' => 'em',
             '/ns$/' => 'm',
             '/is$/' => 'il',

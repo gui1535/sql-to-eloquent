@@ -85,6 +85,25 @@ class AnalisadorMysqlTest extends TestCase
 
         $this->assertNotEmpty($schema->avisos);
         $this->assertTrue($this->avisoContem($schema->avisos, 'CREATE VIEW'));
+        $this->assertTrue($this->avisoContem($schema->avisos, 'ainda não é suportado'));
+    }
+
+    public function test_ignora_after_sem_aviso_falso_de_atributo(): void
+    {
+        $schema = $this->analisador->analisar(<<<'SQL'
+            CREATE TABLE produtos (
+              id bigint unsigned NOT NULL AUTO_INCREMENT,
+              estoque int NOT NULL DEFAULT 0,
+              peso_kg decimal(8,2) NULL AFTER estoque,
+              PRIMARY KEY (id)
+            );
+        SQL);
+
+        $produtos = $schema->tabela('produtos');
+        $this->assertNotNull($produtos);
+        $this->assertNotNull($produtos->coluna('peso_kg'));
+        $this->assertFalse($this->avisoContem($schema->avisos, "Atributo 'AFTER'"));
+        $this->assertFalse($this->avisoContem($schema->avisos, "Atributo 'estoque'"));
     }
 
     public function test_aplica_alter_table_e_create_index(): void

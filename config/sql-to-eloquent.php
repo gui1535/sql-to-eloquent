@@ -13,8 +13,8 @@ return [
     'artefatos' => [
         'migrations' => true,
         'models' => true,
-        'controllers' => true,
-        'requests' => true,
+        'controllers' => false,
+        'requests' => false,
         'seeders' => true,
         'rotas' => false,
         'auth' => false,

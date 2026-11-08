@@ -24,9 +24,9 @@ Cada tabela gera um model com:
   - `hasOne` (quando a FK é única)
   - `belongsToMany` (tabelas pivot)
 
-Pivots puras não geram model. SoftDeletes é opcional via CLI.
+Pivots puras não geram model. SoftDeletes é opcional via CLI (lista positiva no interativo).
 
-Se você escolher a tabela de users, o model vira `User` (`Authenticatable`) com `$table` apontando para a tabela real (ex.: `usuarios`). Quando a senha não for `password`, gera `getAuthPasswordName()`.
+Se você escolher a tabela de users, o model vira `User` (`Authenticatable`) com `$table` apontando para a tabela real (ex.: `usuarios`). Quando a senha não for `password` e a auth API estiver ligada, gera `getAuthPasswordName()`.
 
 ## Controllers e Form Requests
 
@@ -37,11 +37,11 @@ A validação fica em:
 - `Store{Model}Request` (`required` + `exists:` nas FKs)
 - `Update{Model}Request` (`sometimes` + `exists:` nas FKs)
 
-Pivots não geram CRUD.
+Pivots não geram CRUD. No default da config (e no preset essencial) controllers/requests ficam desligados.
 
 ## Rotas e autenticação API
 
-Rotas são opcionais. Arquivo `routes/sql-to-eloquent.php` com `Route::apiResource(...)` e `->parameters()` quando o nome do parâmetro difere (ex.: `usuarios` → `user`).
+Rotas são opcionais. Arquivo `routes/sql-to-eloquent.php` com `Route::apiResource(...)->parameters([...])` usando singular em português (ex.: `cupons` → `{cupom}`, `fornecedores` → `{fornecedor}`, `usuarios` → `{user}`).
 
 Autenticação API (opcional, Sanctum):
 
@@ -50,9 +50,17 @@ Autenticação API (opcional, Sanctum):
 - `User` com `HasApiTokens`
 - rotas em `/auth/*` e CRUD protegido por `auth:sanctum`
 
-Quando auth ou rotas API forem geradas, o comando pode executar `php artisan install:api --without-migration-prompt` e registrar `routes/sql-to-eloquent.php` em `routes/api.php`.
+Quando auth ou rotas API forem geradas, o comando pode:
 
-Para pular a instalação automática: `--sem-install-api`.
+1. Executar `php artisan install:api --without-migration-prompt` (ou criar `routes/api.php` com `--sem-install-api`)
+2. Registrar a API em `bootstrap/app.php` se precisar
+3. Fazer `require` de `sql-to-eloquent.php` em `routes/api.php`
+4. Mover a migration padrão `create_users_table` para `.bak`
+5. Ajustar `UserFactory` (`name`→`nome`, `password`→`senha`)
+
+Avisos sobre users/factory que já foram resolvidos por esses ajustes não reaparecem no resumo final.
+
+`--sem-install-api` basta para listar rotas; `HasApiTokens` ainda precisa do Sanctum instalado (`install:api` é o caminho completo).
 
 ## Seeders
 

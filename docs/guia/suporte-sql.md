@@ -10,10 +10,10 @@
 | Statement | Situação |
 | --- | --- |
 | `CREATE TABLE` | Suportado |
-| `ALTER TABLE` | Suportado para colunas, índices e foreign keys |
+| `ALTER TABLE` | Suportado para colunas (incl. `AFTER`), índices e foreign keys |
 | `CREATE INDEX` / `CREATE UNIQUE INDEX` | Suportado |
 | `INSERT` | Suportado (usado para seeders) |
-| `CREATE VIEW` | Ignorado com aviso |
+| `CREATE VIEW` | Ignorado com aviso claro |
 | `SET`, `USE`, `DROP TABLE` | Ignorados sem aviso |
 
 ## ALTER TABLE suportado

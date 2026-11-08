@@ -32,16 +32,11 @@ class ConstrutorRota
             $controller = $this->construtorController->nomeClasse($tabela->nome, $tabelaUsers);
             $recurso = $this->nomeador->recurso($tabela->nome);
             $variavel = $this->nomeador->variavel($tabela->nome, $tabelaUsers);
-            $parametro = $this->nomeador->singular($tabela->nome);
 
             $uses[$controller] = "use {$namespaceControllers}\\{$controller};";
 
-            if ($parametro !== $variavel) {
-                $rotasCrud[] = "    Route::apiResource('{$recurso}', {$controller}::class)"
-                    ."->parameters(['{$recurso}' => '{$variavel}']);";
-            } else {
-                $rotasCrud[] = "    Route::apiResource('{$recurso}', {$controller}::class);";
-            }
+            $rotasCrud[] = "    Route::apiResource('{$recurso}', {$controller}::class)"
+                ."->parameters(['{$recurso}' => '{$variavel}']);";
         }
 
         ksort($uses);

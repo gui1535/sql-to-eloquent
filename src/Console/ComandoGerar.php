@@ -7,6 +7,7 @@ use SqlToEloquent\Analise\AnalisadorMysql;
 use SqlToEloquent\Dominio\Schema;
 use SqlToEloquent\Dominio\Tabela;
 use SqlToEloquent\Dominio\TipoArtefato;
+use SqlToEloquent\Escrita\AjustadorProjetoLaravel;
 use SqlToEloquent\Escrita\EscritorArquivos;
 use SqlToEloquent\Geracao\Suporte\DetectorPivot;
 use SqlToEloquent\Planejamento\OpcoesGeracao;
@@ -19,9 +20,12 @@ use function Laravel\Prompts\select;
 
 class ComandoGerar extends Command
 {
+    private string $modo = 'personalizado';
+
     protected $signature = 'sql:gerar
         {arquivo : Caminho do arquivo SQL}
         {--artefatos= : migrations,models,controllers,seeders,rotas,auth}
+        {--preset= : essencial, api ou personalizado}
         {--tabelas= : Filtra tabelas (separadas por vírgula)}
         {--tabelas-crud= : Tabelas com controller CRUD e Form Requests}
         {--soft-deletes : Ativa SoftDeletes nas tabelas incluídas}
@@ -43,6 +47,7 @@ class ComandoGerar extends Command
         {--namespace-requests= : Namespace dos Form Requests}
         {--sobrescrever : Sobrescreve arquivos existentes}
         {--dry-run : Mostra o plano sem gravar arquivos}
+        {--detalhado : Lista todos os arquivos no plano e no resumo}
         {--sem-interacao : Não faz perguntas}';
 
     protected $description = 'Gera migrations, models, Form Requests, controllers CRUD e rotas a partir de um schema SQL';
@@ -93,8 +98,17 @@ class ComandoGerar extends Command
         }
 
         if ($plano->totalConflitos() > 0 && ! $opcoes->sobrescrever) {
+            $criticos = $this->conflitosCriticos($plano);
+
             if ($this->modoInterativo()) {
-                if (! confirm('Existem conflitos. Sobrescrever arquivos existentes?', false)) {
+                if ($criticos !== []) {
+                    $this->components->warn('Conflitos críticos: '.implode(', ', $criticos));
+                    if (! confirm('Sobrescrever esses arquivos críticos agora?', true)) {
+                        $this->components->warn('Operação cancelada. Sem sobrescrever, seeders/rotas podem ficar incompletos.');
+
+                        return self::SUCCESS;
+                    }
+                } elseif (! confirm('Existem conflitos. Sobrescrever arquivos existentes?', false)) {
                     $this->components->warn('Operação cancelada.');
 
                     return self::SUCCESS;
@@ -133,8 +147,11 @@ class ComandoGerar extends Command
         }
 
         $resultado = $escritor->gravar($plano, $opcoes->sobrescrever);
-        $this->registrarRotasNoApi($plano);
-        $this->exibirResumoFinal($resultado, $plano->avisos);
+        $ajustador = new AjustadorProjetoLaravel;
+        $this->registrarRotasNoApi($plano, $ajustador);
+        $ajustes = $ajustador->ajustarUsersPadrao($this, $opcoes->tabelaUsers, $this->modoInterativo());
+        $avisos = $this->filtrarAvisosResolvidos($plano->avisos, $ajustes);
+        $this->exibirResumoFinal($resultado, $avisos, $opcoes);
 
         return self::SUCCESS;
     }
@@ -142,13 +159,14 @@ class ComandoGerar extends Command
     private function montarOpcoes(Schema $schema): OpcoesGeracao
     {
         $config = config('sql-to-eloquent', []);
-        $tabelas = $this->resolverTabelas($schema);
+        $this->modo = $this->resolverModo();
         $artefatos = $this->resolverArtefatos($schema, $config);
+        $tabelas = $this->resolverTabelas($schema);
         $tabelasCrud = $this->resolverTabelasCrud($schema, $tabelas, $artefatos);
         $tabelasSoftDelete = $this->resolverTabelasSoftDelete($schema, $tabelas, $artefatos, $config);
         $tabelaUsers = $this->resolverTabelaUsers($schema, $tabelas, $config);
         [$campoEmail, $campoSenha] = $this->resolverCamposAuth($schema, $tabelaUsers, $config);
-        $artefatos = $this->resolverAuthERotas($schema, $artefatos, $tabelaUsers, $config);
+        $artefatos = $this->resolverAuthERotas($artefatos, $tabelaUsers, $config);
 
         return new OpcoesGeracao(
             artefatos: $artefatos,
@@ -169,6 +187,29 @@ class ComandoGerar extends Command
         );
     }
 
+    private function resolverModo(): string
+    {
+        $opcao = $this->option('preset');
+
+        if (is_string($opcao) && in_array($opcao, ['essencial', 'api', 'personalizado'], true)) {
+            return $opcao;
+        }
+
+        if (! $this->modoInterativo()) {
+            return 'personalizado';
+        }
+
+        return select(
+            label: 'Como deseja gerar?',
+            options: [
+                'essencial' => 'Essencial — migrations + models (+ seeders se houver INSERT)',
+                'api' => 'API completa — CRUD, requests, rotas e autenticação Sanctum',
+                'personalizado' => 'Personalizado — escolher cada item',
+            ],
+            default: 'essencial',
+        );
+    }
+
     /**
      * @param  array<string, mixed>  $config
      * @return list<TipoArtefato>
@@ -179,6 +220,31 @@ class ComandoGerar extends Command
 
         if (is_string($opcao) && $opcao !== '') {
             return $this->normalizarArtefatos($this->parseArtefatos($opcao));
+        }
+
+        if ($this->modo === 'essencial') {
+            $artefatos = [TipoArtefato::Migration, TipoArtefato::Model];
+            if ($schema->temDados()) {
+                $artefatos[] = TipoArtefato::Seeder;
+            }
+
+            return $artefatos;
+        }
+
+        if ($this->modo === 'api') {
+            $artefatos = [
+                TipoArtefato::Migration,
+                TipoArtefato::Model,
+                TipoArtefato::Controller,
+                TipoArtefato::Request,
+                TipoArtefato::Rota,
+                TipoArtefato::Auth,
+            ];
+            if ($schema->temDados()) {
+                $artefatos[] = TipoArtefato::Seeder;
+            }
+
+            return $artefatos;
         }
 
         if ($this->modoInterativo()) {
@@ -222,7 +288,7 @@ class ComandoGerar extends Command
             options: $opcoes,
             default: $padrao,
             required: true,
-            hint: 'Espaço marca, Enter confirma. Controllers CRUD incluem Form Requests. Rotas API são opcionais',
+            hint: 'Controllers incluem Form Requests. Rotas API são opcionais',
         );
 
         return $this->normalizarArtefatos(array_values(array_filter(
@@ -289,11 +355,30 @@ class ComandoGerar extends Command
      * @return list<TipoArtefato>
      */
     private function resolverAuthERotas(
-        Schema $schema,
         array $artefatos,
         ?string $tabelaUsers,
         array $config,
     ): array {
+        if ($this->modo === 'essencial') {
+            return array_values(array_filter(
+                $artefatos,
+                fn (TipoArtefato $tipo) => ! in_array($tipo, [TipoArtefato::Auth, TipoArtefato::Rota], true),
+            ));
+        }
+
+        if ($this->modo === 'api') {
+            if ($tabelaUsers === null) {
+                $artefatos = array_values(array_filter(
+                    $artefatos,
+                    fn (TipoArtefato $tipo) => $tipo !== TipoArtefato::Auth,
+                ));
+            } elseif (! in_array(TipoArtefato::Auth, $artefatos, true)) {
+                $artefatos[] = TipoArtefato::Auth;
+            }
+
+            return $this->normalizarArtefatos($artefatos);
+        }
+
         if ($tabelaUsers !== null) {
             $querAuth = (bool) $this->option('auth')
                 || ($config['artefatos']['auth'] ?? false) === true
@@ -301,7 +386,7 @@ class ComandoGerar extends Command
 
             if ($this->modoInterativo()) {
                 $querAuth = confirm(
-                    'Gerar autenticação API padrão do Laravel (login/register/logout com Sanctum)?',
+                    'Gerar autenticação API (Sanctum: login/register/logout)?',
                     $querAuth,
                 );
             }
@@ -317,7 +402,7 @@ class ComandoGerar extends Command
             && ! in_array(TipoArtefato::Rota, $artefatos, true)
             && ! in_array(TipoArtefato::Auth, $artefatos, true)
         ) {
-            if (confirm('Gerar rotas API (apiResource)?', true)) {
+            if (confirm('Gerar rotas API (apiResource)?', false)) {
                 $artefatos[] = TipoArtefato::Rota;
             }
         }
@@ -347,7 +432,7 @@ class ComandoGerar extends Command
             return array_values(array_filter(array_map('trim', explode(',', $opcao))));
         }
 
-        if (! $this->modoInterativo() || count($schema->tabelas) <= 1) {
+        if (! $this->modoInterativo() || count($schema->tabelas) <= 1 || $this->modo !== 'personalizado') {
             return null;
         }
 
@@ -402,7 +487,7 @@ class ComandoGerar extends Command
             return [];
         }
 
-        if (! $this->modoInterativo()) {
+        if (! $this->modoInterativo() || $this->modo === 'api') {
             return $candidatas;
         }
 
@@ -415,7 +500,7 @@ class ComandoGerar extends Command
             options: array_combine($candidatas, $candidatas),
             default: $candidatas,
             required: true,
-            hint: 'Pivots ficam de fora. Cada tabela gera Controller + Requests + rota',
+            hint: 'Pivots ficam de fora. Cada tabela gera Controller + Requests',
         );
 
         return array_values($escolhidas);
@@ -579,31 +664,42 @@ class ComandoGerar extends Command
             return array_values(array_intersect($escolhidas, $candidatas));
         }
 
-        $padrao = (bool) $this->option('soft-deletes') || ($config['soft_deletes'] ?? false) === true;
-        $ativar = $this->modoInterativo()
-            ? confirm('Usar SoftDeletes?', $padrao)
-            : $padrao;
+        if ($this->modo === 'essencial' || $this->modo === 'api') {
+            if ((bool) $this->option('soft-deletes') || ($config['soft_deletes'] ?? false) === true) {
+                $excluidas = [];
+                $opcaoExcluir = $this->option('sem-soft-delete');
+                if (is_string($opcaoExcluir) && $opcaoExcluir !== '') {
+                    $excluidas = array_values(array_filter(array_map('trim', explode(',', $opcaoExcluir))));
+                }
 
-        if (! $ativar) {
+                return array_values(array_diff($candidatas, $excluidas));
+            }
+
             return [];
         }
 
-        $excluidas = [];
         $opcaoExcluir = $this->option('sem-soft-delete');
-
         if (is_string($opcaoExcluir) && $opcaoExcluir !== '') {
             $excluidas = array_values(array_filter(array_map('trim', explode(',', $opcaoExcluir))));
-        } elseif ($this->modoInterativo() && count($candidatas) > 1) {
-            $excluidas = multiselect(
-                label: 'Quais tabelas NÃO devem ter SoftDeletes?',
-                options: array_combine($candidatas, $candidatas),
-                default: [],
-                required: false,
-                hint: 'Deixe vazio para aplicar em todas. Espaço marca, Enter confirma',
-            );
+
+            return array_values(array_diff($candidatas, $excluidas));
         }
 
-        return array_values(array_diff($candidatas, $excluidas));
+        if ((bool) $this->option('soft-deletes') || ($config['soft_deletes'] ?? false) === true) {
+            return $candidatas;
+        }
+
+        if (! $this->modoInterativo()) {
+            return [];
+        }
+
+        return multiselect(
+            label: 'Em quais tabelas aplicar SoftDeletes?',
+            options: array_combine($candidatas, $candidatas),
+            default: [],
+            required: false,
+            hint: 'Deixe vazio para não aplicar. Espaço marca, Enter confirma',
+        );
     }
 
     /** @param  list<string>  $candidatas */
@@ -680,6 +776,8 @@ class ComandoGerar extends Command
         }
 
         if ($this->option('sem-install-api')) {
+            (new AjustadorProjetoLaravel)->garantirApiPhp($this);
+
             return true;
         }
 
@@ -689,16 +787,20 @@ class ComandoGerar extends Command
             return true;
         }
 
+        $instalar = true;
+
         if ($this->modoInterativo()) {
             $rotulo = $opcoes->authApi()
                 ? 'Instalar API Laravel agora? (php artisan install:api - Sanctum)'
                 : 'Instalar scaffolding de API Laravel agora? (php artisan install:api)';
+            $instalar = confirm($rotulo, true);
+        }
 
-            if (! confirm($rotulo, true)) {
-                $this->components->warn('Pulou install:api. Rode depois: php artisan install:api --without-migration-prompt');
+        if (! $instalar) {
+            (new AjustadorProjetoLaravel)->garantirApiPhp($this);
+            $this->components->warn('Pulou install:api. Sanctum pode faltar: php artisan install:api --without-migration-prompt');
 
-                return true;
-            }
+            return true;
         }
 
         $this->components->info('Executando php artisan install:api...');
@@ -709,12 +811,14 @@ class ComandoGerar extends Command
             ]);
         } catch (\Throwable $erro) {
             $this->components->error('Falha ao executar install:api: '.$erro->getMessage());
+            (new AjustadorProjetoLaravel)->garantirApiPhp($this);
 
             return false;
         }
 
         if ($codigo !== self::SUCCESS) {
             $this->components->error('install:api retornou código '.$codigo.'.');
+            (new AjustadorProjetoLaravel)->garantirApiPhp($this);
 
             return false;
         }
@@ -737,38 +841,86 @@ class ComandoGerar extends Command
         return $temApi;
     }
 
-    private function registrarRotasNoApi(PlanoGeracao $plano): void
+    private function registrarRotasNoApi(PlanoGeracao $plano, AjustadorProjetoLaravel $ajustador): void
     {
-        $arquivoRotas = null;
+        $temRotas = false;
 
         foreach ($plano->arquivos as $arquivo) {
             if ($arquivo->tipo === TipoArtefato::Rota) {
-                $arquivoRotas = $arquivo->caminho;
+                $temRotas = true;
                 break;
             }
         }
 
-        if ($arquivoRotas === null) {
+        if (! $temRotas) {
             return;
         }
 
-        $api = base_path('routes/api.php');
+        $api = $ajustador->garantirApiPhp($this);
+        $ajustador->registrarRequire($this, $api);
+    }
 
-        if (! is_file($api)) {
-            $this->components->warn('routes/api.php não encontrado. Inclua manualmente: require base_path(\'routes/sql-to-eloquent.php\');');
+    /**
+     * @param  list<string>  $avisos
+     * @param  array{migrationUsers: bool, factory: bool}  $ajustes
+     * @return list<string>
+     */
+    /**
+     * @param  list<string>  $avisos
+     * @param  array{migrationUsers: bool, factory: bool}  $ajustes
+     * @return list<string>
+     */
+    private function filtrarAvisosResolvidos(array $avisos, array $ajustes): array
+    {
+        $filtrados = [];
 
-            return;
+        foreach ($avisos as $aviso) {
+            $falaUsers = str_contains($aviso, 'create_users_table') || str_contains($aviso, 'UserFactory');
+
+            if (! $falaUsers) {
+                $filtrados[] = $aviso;
+                continue;
+            }
+
+            if ($ajustes['migrationUsers'] && $ajustes['factory']) {
+                continue;
+            }
+
+            if ($ajustes['migrationUsers'] && ! $ajustes['factory']) {
+                $filtrados[] = 'Revise database/factories/UserFactory.php (campos name/password).';
+                continue;
+            }
+
+            if (! $ajustes['migrationUsers'] && $ajustes['factory']) {
+                $filtrados[] = 'Revise ou remova a migration padrão create_users_table.';
+                continue;
+            }
+
+            $filtrados[] = $aviso;
         }
 
-        $conteudo = (string) file_get_contents($api);
+        return $filtrados;
+    }
 
-        if (str_contains($conteudo, 'sql-to-eloquent.php')) {
-            return;
+    /** @return list<string> */
+    private function conflitosCriticos(PlanoGeracao $plano): array
+    {
+        $criticos = [];
+
+        foreach ($plano->conflitos() as $arquivo) {
+            $base = basename($arquivo->caminho);
+
+            if (in_array($base, ['DatabaseSeeder.php', 'sql-to-eloquent.php', 'User.php'], true)) {
+                $criticos[] = $base;
+            }
         }
 
-        $require = "require base_path('routes/sql-to-eloquent.php');";
-        file_put_contents($api, rtrim($conteudo).PHP_EOL.PHP_EOL.$require.PHP_EOL);
-        $this->components->info('Rotas registradas em routes/api.php.');
+        return array_values(array_unique($criticos));
+    }
+
+    private function detalhado(): bool
+    {
+        return (bool) $this->option('detalhado');
     }
 
     private function exibirResumoSchema(Schema $schema): void
@@ -835,65 +987,103 @@ class ComandoGerar extends Command
 
         foreach ($plano->porTipo() as $tipo => $arquivos) {
             $rotulo = TipoArtefato::from($tipo)->rotulo();
-            $this->line("  <fg=yellow;options=bold>{$rotulo}</> <fg=gray>(".count($arquivos).')</>');
+            $novos = 0;
+            $substituir = 0;
+            $conflitos = 0;
 
             foreach ($arquivos as $arquivo) {
                 if ($arquivo->conflito) {
-                    $this->line("    <fg=red>conflito</>   {$arquivo->caminho}");
+                    $conflitos++;
                 } elseif (is_file($arquivo->caminho)) {
-                    $this->line("    <fg=cyan>substituir</> {$arquivo->caminho}");
+                    $substituir++;
                 } else {
-                    $this->line("    <fg=green>novo</>       {$arquivo->caminho}");
+                    $novos++;
                 }
             }
 
-            $this->newLine();
+            $detalhe = "{$novos} novo(s)";
+            if ($substituir > 0) {
+                $detalhe .= ", {$substituir} substituir";
+            }
+            if ($conflitos > 0) {
+                $detalhe .= ", {$conflitos} conflito(s)";
+            }
+
+            $this->line("  <fg=yellow;options=bold>{$rotulo}</> <fg=gray>(".count($arquivos)." — {$detalhe})</>");
+
+            if ($this->detalhado() || count($arquivos) <= 3) {
+                foreach ($arquivos as $arquivo) {
+                    if ($arquivo->conflito) {
+                        $this->line("    <fg=red>conflito</>   {$arquivo->caminho}");
+                    } elseif (is_file($arquivo->caminho)) {
+                        $this->line("    <fg=cyan>substituir</> {$arquivo->caminho}");
+                    } else {
+                        $this->line("    <fg=green>novo</>       {$arquivo->caminho}");
+                    }
+                }
+            }
+        }
+
+        if (! $this->detalhado() && $plano->total() > 3) {
+            $this->line('  <fg=gray>Use --detalhado para listar todos os arquivos.</>');
         }
 
         if ($plano->totalConflitos() > 0) {
             $this->components->warn("{$plano->totalConflitos()} arquivo(s) já existem e serão ignorados sem --sobrescrever.");
         }
 
-        $this->exibirAvisos($plano->avisos);
+        $this->exibirAvisos($plano->avisos, 'Ações recomendadas');
     }
 
     /**
      * @param  array{criados: list<string>, ignorados: list<string>}  $resultado
      * @param  list<string>  $avisos
      */
-    private function exibirResumoFinal(array $resultado, array $avisos): void
+    private function exibirResumoFinal(array $resultado, array $avisos, OpcoesGeracao $opcoes): void
     {
         $this->newLine();
         $this->components->info('Geração concluída');
         $this->components->twoColumnDetail('Criados', (string) count($resultado['criados']));
         $this->components->twoColumnDetail('Ignorados', (string) count($resultado['ignorados']));
 
-        if ($resultado['criados'] !== []) {
-            $this->newLine();
-            foreach ($resultado['criados'] as $caminho) {
-                $this->line("  <fg=green>+</> {$caminho}");
+        if ($this->detalhado()) {
+            if ($resultado['criados'] !== []) {
+                $this->newLine();
+                foreach ($resultado['criados'] as $caminho) {
+                    $this->line("  <fg=green>+</> {$caminho}");
+                }
+            }
+
+            if ($resultado['ignorados'] !== []) {
+                $this->newLine();
+                foreach ($resultado['ignorados'] as $caminho) {
+                    $this->line("  <fg=yellow>·</> {$caminho}");
+                }
             }
         }
 
-        if ($resultado['ignorados'] !== []) {
-            $this->newLine();
-            foreach ($resultado['ignorados'] as $caminho) {
-                $this->line("  <fg=yellow>·</> {$caminho}");
-            }
-        }
+        $this->exibirAvisos($avisos, 'Ações recomendadas');
 
-        $this->exibirAvisos($avisos);
+        $this->newLine();
+        $this->line('  <fg=green;options=bold>Próximos passos</>');
+        $this->line('  <fg=gray>1.</> php artisan migrate');
+        if ($opcoes->inclui(TipoArtefato::Seeder)) {
+            $this->line('  <fg=gray>2.</> php artisan db:seed');
+        }
+        if ($opcoes->inclui(TipoArtefato::Rota) || $opcoes->authApi()) {
+            $this->line('  <fg=gray>3.</> php artisan route:list --path=api');
+        }
     }
 
     /** @param list<string> $avisos */
-    private function exibirAvisos(array $avisos): void
+    private function exibirAvisos(array $avisos, string $titulo = 'Avisos'): void
     {
         if ($avisos === []) {
             return;
         }
 
         $this->newLine();
-        $this->line('  <fg=yellow;options=bold>Avisos</>');
+        $this->line("  <fg=yellow;options=bold>{$titulo}</>");
 
         foreach ($avisos as $aviso) {
             $this->line("  <fg=yellow>!</> {$aviso}");

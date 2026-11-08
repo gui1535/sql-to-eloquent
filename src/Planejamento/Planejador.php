@@ -3,7 +3,6 @@
 namespace SqlToEloquent\Planejamento;
 
 use SqlToEloquent\Dominio\Schema;
-use SqlToEloquent\Dominio\TipoArtefato;
 use SqlToEloquent\Geracao\Orquestrador;
 use SqlToEloquent\Geracao\Suporte\DetectorPivot;
 
@@ -22,11 +21,7 @@ class Planejador
         }
 
         $arquivos = $this->orquestrador->gerar($schema, $opcoes);
-        $avisos = $schema->avisos;
-
-        foreach ($this->avisosGeracao($schema, $opcoes, $arquivos) as $aviso) {
-            $avisos[] = $aviso;
-        }
+        $avisos = $this->avisosGeracao($schema, $opcoes);
 
         foreach ($arquivos as $indice => $arquivo) {
             if (! is_file($arquivo->caminho) || $opcoes->sobrescrever) {
@@ -52,11 +47,8 @@ class Planejador
         );
     }
 
-    /**
-     * @param  list<ArquivoPlanejado>  $arquivos
-     * @return list<string>
-     */
-    private function avisosGeracao(Schema $schema, OpcoesGeracao $opcoes, array $arquivos): array
+    /** @return list<string> */
+    private function avisosGeracao(Schema $schema, OpcoesGeracao $opcoes): array
     {
         $avisos = [];
 
@@ -67,14 +59,10 @@ class Planejador
         }
 
         if ($opcoes->tabelaUsers !== null) {
-            if ($opcoes->tabelaUsers !== 'users') {
-                $avisos[] = "Tabela de auth é '{$opcoes->tabelaUsers}': remova ou ajuste a migration padrão create_users_table do Laravel.";
-            } else {
-                $avisos[] = 'Tabela users selecionada: remova a migration padrão create_users_table para evitar conflito.';
-            }
+            $avisos[] = 'Ao gravar, a migration create_users_table e a UserFactory podem ser ajustadas automaticamente.';
+        }
 
-            $avisos[] = 'Ajuste ou remova database/factories/UserFactory.php e o User::factory() do DatabaseSeeder padrão.';
-
+        if ($opcoes->authApi()) {
             if ($opcoes->campoSenha !== null && $opcoes->campoSenha !== 'password') {
                 $avisos[] = "Auth usará o campo '{$opcoes->campoSenha}' como senha (getAuthPasswordName).";
             }
@@ -82,10 +70,6 @@ class Planejador
             if ($opcoes->campoEmail !== null && $opcoes->campoEmail !== 'email') {
                 $avisos[] = "Auth usará o campo '{$opcoes->campoEmail}' como e-mail.";
             }
-        }
-
-        if ($opcoes->authApi() || $opcoes->inclui(TipoArtefato::Rota)) {
-            $avisos[] = 'Se a API Laravel ainda não estiver pronta, o comando pode rodar install:api automaticamente.';
         }
 
         return $avisos;

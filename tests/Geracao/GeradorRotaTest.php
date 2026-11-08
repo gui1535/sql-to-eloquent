@@ -34,7 +34,7 @@ class GeradorRotaTest extends TestCase
             $arquivo->conteudo,
         );
         $this->assertStringContainsString(
-            "Route::apiResource('pedidos', PedidoController::class);",
+            "Route::apiResource('pedidos', PedidoController::class)->parameters(['pedidos' => 'pedido']);",
             $arquivo->conteudo,
         );
         $this->assertStringNotContainsString('auth:sanctum', $arquivo->conteudo);

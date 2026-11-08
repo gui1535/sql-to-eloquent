@@ -415,6 +415,21 @@ class InterpretadorCreateTable
                 continue;
             }
 
+            if ($token->eh(TiposToken::IDENTIFICADOR, 'FIRST')) {
+                $leitor->consumir();
+                continue;
+            }
+
+            if ($token->eh(TiposToken::IDENTIFICADOR, 'AFTER')) {
+                $leitor->consumir();
+                if ($leitor->atual()?->tipo === TiposToken::IDENTIFICADOR
+                    || $leitor->atual()?->tipo === TiposToken::STRING
+                ) {
+                    $leitor->consumir();
+                }
+                continue;
+            }
+
             $avisos[] = "Atributo '{$token->valor}' na coluna '{$nome}' foi ignorado.";
             $leitor->consumir();
         }
