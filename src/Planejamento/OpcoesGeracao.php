@@ -24,6 +24,8 @@ class OpcoesGeracao
         public readonly ?string $tabelaUsers = null,
         public readonly ?array $tabelasCrud = null,
         public readonly array $tabelasSoftDelete = [],
+        public readonly ?string $campoEmail = null,
+        public readonly ?string $campoSenha = null,
     ) {
     }
 
@@ -44,5 +46,10 @@ class OpcoesGeracao
     public function incluiSoftDelete(string $tabela): bool
     {
         return in_array($tabela, $this->tabelasSoftDelete, true);
+    }
+
+    public function authApi(): bool
+    {
+        return $this->inclui(TipoArtefato::Auth) && $this->tabelaUsers !== null;
     }
 }

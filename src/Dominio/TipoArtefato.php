@@ -9,6 +9,8 @@ enum TipoArtefato: string
     case Controller = 'controllers';
     case Request = 'requests';
     case Seeder = 'seeders';
+    case Rota = 'rotas';
+    case Auth = 'auth';
 
     public function rotulo(): string
     {
@@ -18,6 +20,8 @@ enum TipoArtefato: string
             self::Controller => 'Controllers CRUD',
             self::Request => 'Form Requests',
             self::Seeder => 'Seeders',
+            self::Rota => 'Rotas API',
+            self::Auth => 'Autenticação API',
         };
     }
 }

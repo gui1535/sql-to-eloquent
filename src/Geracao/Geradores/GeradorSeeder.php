@@ -6,6 +6,7 @@ use SqlToEloquent\Dominio\Schema;
 use SqlToEloquent\Dominio\TipoArtefato;
 use SqlToEloquent\Geracao\ContratoGerador;
 use SqlToEloquent\Geracao\Suporte\ConstrutorSeeder;
+use SqlToEloquent\Geracao\Suporte\OrdenadorTabelas;
 use SqlToEloquent\Planejamento\ArquivoPlanejado;
 use SqlToEloquent\Planejamento\OpcoesGeracao;
 
@@ -13,6 +14,7 @@ class GeradorSeeder implements ContratoGerador
 {
     public function __construct(
         private readonly ConstrutorSeeder $construtor = new ConstrutorSeeder,
+        private readonly OrdenadorTabelas $ordenador = new OrdenadorTabelas,
     ) {
     }
 
@@ -34,14 +36,35 @@ class GeradorSeeder implements ContratoGerador
             $porTabela[$insercao->tabela][] = $insercao;
         }
 
-        $arquivos = [];
+        $tabelasOrdenadas = $this->ordenador->ordenar(
+            array_values(array_filter(
+                $schema->tabelas,
+                fn ($tabela) => isset($porTabela[$tabela->nome]),
+            )),
+        );
 
-        foreach ($porTabela as $tabela => $insercoes) {
+        $arquivos = [];
+        $classes = [];
+
+        foreach ($tabelasOrdenadas as $tabela) {
+            $nome = $tabela->nome;
+            $classe = $this->construtor->nomeClasse($nome, $opcoes->tabelaUsers);
+            $classes[] = $classe;
+
             $arquivos[] = new ArquivoPlanejado(
                 tipo: TipoArtefato::Seeder,
-                caminho: $diretorio.'/'.$this->construtor->nomeArquivo($tabela),
-                conteudo: $this->construtor->montar($tabela, $insercoes),
-                tabela: $tabela,
+                caminho: $diretorio.'/'.$this->construtor->nomeArquivo($nome, $opcoes->tabelaUsers),
+                conteudo: $this->construtor->montar($nome, $porTabela[$nome], $opcoes->tabelaUsers),
+                tabela: $nome,
+            );
+        }
+
+        if ($classes !== []) {
+            $arquivos[] = new ArquivoPlanejado(
+                tipo: TipoArtefato::Seeder,
+                caminho: $diretorio.'/DatabaseSeeder.php',
+                conteudo: $this->construtor->montarDatabaseSeeder($classes),
+                tabela: null,
             );
         }
 

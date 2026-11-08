@@ -10,6 +10,7 @@ class DetectorRelacionamentos
 {
     public function __construct(
         private readonly NomeadorModel $nomeador = new NomeadorModel,
+        private readonly DetectorPivot $detectorPivot = new DetectorPivot,
     ) {
     }
 
@@ -24,7 +25,24 @@ class DetectorRelacionamentos
             $porTabela[$tabela->nome] = [];
         }
 
+        $pivots = [];
+
         foreach ($schema->tabelas as $tabela) {
+            if ($this->detectorPivot->ehPivot($tabela)) {
+                $pivots[$tabela->nome] = $tabela;
+                $this->registrarBelongsToMany($porTabela, $tabela, $tabelaUsers);
+            }
+        }
+
+        foreach ($schema->tabelas as $tabela) {
+            if (isset($pivots[$tabela->nome])) {
+                if (! $this->detectorPivot->ehPivotPura($tabela)) {
+                    $this->registrarBelongsToDaPivot($porTabela, $tabela, $tabelaUsers);
+                }
+
+                continue;
+            }
+
             foreach ($tabela->chavesEstrangeiras as $fk) {
                 if (count($fk->colunas) !== 1 || count($fk->colunasReferenciadas) !== 1) {
                     continue;
@@ -68,6 +86,65 @@ class DetectorRelacionamentos
         }
 
         return $porTabela;
+    }
+
+    /**
+     * @param  array<string, list<Relacionamento>>  $porTabela
+     */
+    private function registrarBelongsToMany(array &$porTabela, Tabela $pivot, ?string $tabelaUsers): void
+    {
+        $fks = $this->detectorPivot->fksSimples($pivot);
+
+        if (count($fks) !== 2) {
+            return;
+        }
+
+        [$esquerda, $direita] = $fks;
+        $extras = $this->detectorPivot->colunasExtras($pivot, [$esquerda['coluna'], $direita['coluna']]);
+        $withTimestamps = $this->detectorPivot->temTimestamps($pivot);
+
+        $porTabela[$esquerda['tabela']][] = new Relacionamento(
+            tabela: $esquerda['tabela'],
+            tipo: 'belongsToMany',
+            metodo: $this->nomeador->metodoBelongsToMany($direita['tabela']),
+            modelo: $this->nomeador->classe($direita['tabela'], $tabelaUsers),
+            chaveEstrangeira: $esquerda['coluna'],
+            chaveDona: $esquerda['referenciada'],
+            tabelaPivot: $pivot->nome,
+            chaveRelacionada: $direita['coluna'],
+            withPivot: $extras,
+            withTimestamps: $withTimestamps,
+        );
+
+        $porTabela[$direita['tabela']][] = new Relacionamento(
+            tabela: $direita['tabela'],
+            tipo: 'belongsToMany',
+            metodo: $this->nomeador->metodoBelongsToMany($esquerda['tabela']),
+            modelo: $this->nomeador->classe($esquerda['tabela'], $tabelaUsers),
+            chaveEstrangeira: $direita['coluna'],
+            chaveDona: $direita['referenciada'],
+            tabelaPivot: $pivot->nome,
+            chaveRelacionada: $esquerda['coluna'],
+            withPivot: $extras,
+            withTimestamps: $withTimestamps,
+        );
+    }
+
+    /**
+     * @param  array<string, list<Relacionamento>>  $porTabela
+     */
+    private function registrarBelongsToDaPivot(array &$porTabela, Tabela $pivot, ?string $tabelaUsers): void
+    {
+        foreach ($this->detectorPivot->fksSimples($pivot) as $fk) {
+            $porTabela[$pivot->nome][] = new Relacionamento(
+                tabela: $pivot->nome,
+                tipo: 'belongsTo',
+                metodo: $this->nomeador->metodoBelongsTo($fk['coluna'], $fk['tabela']),
+                modelo: $this->nomeador->classe($fk['tabela'], $tabelaUsers),
+                chaveEstrangeira: $fk['coluna'],
+                chaveDona: $fk['referenciada'],
+            );
+        }
     }
 
     private function fkEhUnica(Tabela $tabela, string $coluna): bool
@@ -115,6 +192,10 @@ class DetectorRelacionamentos
                     modelo: $rel->modelo,
                     chaveEstrangeira: $rel->chaveEstrangeira,
                     chaveDona: $rel->chaveDona,
+                    tabelaPivot: $rel->tabelaPivot,
+                    chaveRelacionada: $rel->chaveRelacionada,
+                    withPivot: $rel->withPivot,
+                    withTimestamps: $rel->withTimestamps,
                 );
         }
 

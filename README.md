@@ -41,11 +41,12 @@ No modo interativo, o comando:
 1. Mostra um resumo do schema (tabelas, colunas, foreign keys e inserts)
 2. Pergunta quais tabelas incluir
 3. Pergunta o que gerar (Controllers CRUD já incluem Form Requests)
-4. Se houver CRUD, pergunta quais tabelas devem ter controller + requests
+4. Se houver CRUD, pergunta quais tabelas devem ter controller + requests (pivots ficam de fora)
 5. Pergunta se deseja SoftDeletes e quais tabelas excluir
-6. Pergunta qual tabela é a de usuários/autenticação
-7. Exibe o plano de arquivos (`novo` / `conflito` / `substituir`)
-8. Confirma antes de gravar
+6. Pergunta qual tabela é a de usuários/autenticação e quais colunas são e-mail e senha
+7. Pergunta se deseja autenticação API (Sanctum) e, se ainda não escolheu, se deseja rotas API
+8. Exibe o plano de arquivos (`novo` / `conflito` / `substituir`)
+9. Confirma antes de gravar
 
 ### Exemplos
 
@@ -89,13 +90,17 @@ php artisan sql:gerar database/schema.sql \
 | Opção | Descrição |
 | --- | --- |
 | `arquivo` | Caminho do arquivo SQL |
-| `--artefatos=` | Lista separada por vírgula: `migrations`, `models`, `controllers`, `seeders` (`controllers` já inclui Form Requests) |
+| `--artefatos=` | Lista separada por vírgula: `migrations`, `models`, `controllers`, `seeders`, `rotas`, `auth` (`controllers` já inclui Form Requests) |
+| `--auth` | Gera autenticação API (login/register/logout com Sanctum) |
+| `--sem-install-api` | Não executa `php artisan install:api` automaticamente |
 | `--tabelas=` | Filtra tabelas (separadas por vírgula) |
 | `--tabelas-crud=` | Tabelas com Controller CRUD + Form Requests |
 | `--soft-deletes` | Ativa SoftDeletes nas tabelas incluídas |
 | `--sem-soft-delete=` | Tabelas sem SoftDeletes (usar com `--soft-deletes`) |
 | `--tabelas-soft-delete=` | Lista explícita de tabelas com SoftDeletes |
 | `--tabela-users=` | Tabela de autenticação Laravel (`users`, `usuarios`, ou `nenhuma`) |
+| `--campo-email=` | Coluna de e-mail da tabela de auth |
+| `--campo-senha=` | Coluna de senha da tabela de auth |
 | `--dir-migrations=` | Diretório de saída das migrations |
 | `--dir-models=` | Diretório de saída dos models |
 | `--dir-controllers=` | Diretório de saída dos controllers |
@@ -116,21 +121,20 @@ Uma migration por tabela, ordenada pelas foreign keys, com mapeamento para Bluep
 
 - `$table`, `$fillable`, `$hidden`, `$casts`
 - Timestamps padrão ou `CREATED_AT` / `UPDATED_AT` (`criado_em` / `atualizado_em`)
-- Relacionamentos a partir das FKs: `belongsTo`, `hasMany`, `hasOne`
+- Relacionamentos: `belongsTo`, `hasMany`, `hasOne`, `belongsToMany` (pivots)
+- SoftDeletes opcional; auth com `getAuthPasswordName()` quando a senha não for `password`
 
-### Controllers e Form Requests
+### Controllers, Form Requests, rotas e auth
 
-Controllers CRUD com `index`, `store`, `show`, `update`, `destroy`.
+Controllers CRUD com `with()` nos relacionamentos e Form Requests (`Store` / `Update` com `sometimes` e `exists:` nas FKs).
 
-A validação fica em Form Requests separados (`StoreXRequest` / `UpdateXRequest`).
+Rotas API (`routes/sql-to-eloquent.php`) são opcionais. Autenticação API (Sanctum: `register` / `login` / `me` / `logout`) também é opcional quando há tabela de users; o model `User` ganha `HasApiTokens` e os `apiResource` ficam atrás de `auth:sanctum`.
 
-Se você informar a tabela de users (`--tabela-users=usuarios`), o model gerado será `User` estendendo `Authenticatable`.
-
-As rotas não são geradas. Você registra os endpoints no seu projeto.
+Pivots N:N não geram CRUD.
 
 ### Seeders
 
-Gerados somente quando o SQL contém `INSERT`. Sem dados de inserção, nenhum seeder é criado.
+Gerados somente quando o SQL contém `INSERT`, com `DatabaseSeeder` na ordem das FKs.
 
 ## Configuração
 

@@ -1,6 +1,6 @@
 # Limitações
 
-- Não gera factories, API resources nem rotas
+- Não gera factories, API resources nem policies
 - Algumas variantes avançadas de `ALTER TABLE` ainda são ignoradas com aviso:
   - rename de tabela
   - conversão de charset

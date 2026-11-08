@@ -7,7 +7,7 @@ Uma migration por tabela, ordenada pelas foreign keys, com mapeamento para Bluep
 - `id()`, `string`, `decimal`, `enum`, `boolean`
 - índices e uniques
 - foreign keys
-- `timestamps()` quando aplicável
+- `timestamps()` e `softDeletes()` quando aplicável
 
 ## Models
 
@@ -22,26 +22,40 @@ Cada tabela gera um model com:
   - `belongsTo`
   - `hasMany`
   - `hasOne` (quando a FK é única)
+  - `belongsToMany` (tabelas pivot)
+
+Pivots puras não geram model. SoftDeletes é opcional via CLI.
+
+Se você escolher a tabela de users, o model vira `User` (`Authenticatable`) com `$table` apontando para a tabela real (ex.: `usuarios`). Quando a senha não for `password`, gera `getAuthPasswordName()`.
 
 ## Controllers e Form Requests
 
-Controllers CRUD com `index`, `store`, `show`, `update` e `destroy`.
+Controllers CRUD com `index`, `store`, `show`, `update` e `destroy`, incluindo `with()` / `load()` nos relacionamentos.
 
 A validação fica em:
 
-- `Store{Model}Request`
-- `Update{Model}Request`
+- `Store{Model}Request` (`required` + `exists:` nas FKs)
+- `Update{Model}Request` (`sometimes` + `exists:` nas FKs)
 
-Se você escolher a tabela de users, o model vira `User` (`Authenticatable`) com `$table` apontando para a tabela real (ex.: `usuarios`).
+Pivots não geram CRUD.
 
-As rotas **não** são geradas. Você registra os endpoints no projeto, por exemplo:
+## Rotas e autenticação API
 
-```php
-Route::apiResource('pedidos', PedidoController::class);
-```
+Rotas são opcionais. Arquivo `routes/sql-to-eloquent.php` com `Route::apiResource(...)` e `->parameters()` quando o nome do parâmetro difere (ex.: `usuarios` → `user`).
+
+Autenticação API (opcional, Sanctum):
+
+- `AuthController` com `register`, `login`, `me`, `logout`
+- `LoginRequest` / `RegisterRequest`
+- `User` com `HasApiTokens`
+- rotas em `/auth/*` e CRUD protegido por `auth:sanctum`
+
+Quando auth ou rotas API forem geradas, o comando pode executar `php artisan install:api --without-migration-prompt` e registrar `routes/sql-to-eloquent.php` em `routes/api.php`.
+
+Para pular a instalação automática: `--sem-install-api`.
 
 ## Seeders
 
 Gerados somente quando o SQL contém `INSERT`.
 
-Sem dados de inserção, nenhum seeder é criado, mesmo com o artefato `seeders` selecionado.
+Também gera `DatabaseSeeder` chamando os seeders na ordem das foreign keys.

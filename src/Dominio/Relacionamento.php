@@ -4,6 +4,9 @@ namespace SqlToEloquent\Dominio;
 
 class Relacionamento
 {
+    /**
+     * @param  list<string>  $withPivot
+     */
     public function __construct(
         public readonly string $tabela,
         public readonly string $tipo,
@@ -11,6 +14,10 @@ class Relacionamento
         public readonly string $modelo,
         public readonly string $chaveEstrangeira,
         public readonly string $chaveDona,
+        public readonly ?string $tabelaPivot = null,
+        public readonly ?string $chaveRelacionada = null,
+        public readonly array $withPivot = [],
+        public readonly bool $withTimestamps = false,
     ) {
     }
 }

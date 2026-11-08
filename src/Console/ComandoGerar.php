@@ -5,8 +5,10 @@ namespace SqlToEloquent\Console;
 use Illuminate\Console\Command;
 use SqlToEloquent\Analise\AnalisadorMysql;
 use SqlToEloquent\Dominio\Schema;
+use SqlToEloquent\Dominio\Tabela;
 use SqlToEloquent\Dominio\TipoArtefato;
 use SqlToEloquent\Escrita\EscritorArquivos;
+use SqlToEloquent\Geracao\Suporte\DetectorPivot;
 use SqlToEloquent\Planejamento\OpcoesGeracao;
 use SqlToEloquent\Planejamento\Planejador;
 use SqlToEloquent\Planejamento\PlanoGeracao;
@@ -19,18 +21,23 @@ class ComandoGerar extends Command
 {
     protected $signature = 'sql:gerar
         {arquivo : Caminho do arquivo SQL}
-        {--artefatos= : migrations,models,controllers,seeders}
+        {--artefatos= : migrations,models,controllers,seeders,rotas,auth}
         {--tabelas= : Filtra tabelas (separadas por vírgula)}
         {--tabelas-crud= : Tabelas com controller CRUD e Form Requests}
         {--soft-deletes : Ativa SoftDeletes nas tabelas incluídas}
         {--sem-soft-delete= : Tabelas sem SoftDeletes (com --soft-deletes)}
         {--tabelas-soft-delete= : Tabelas com SoftDeletes (lista explícita)}
         {--tabela-users= : Tabela de autenticação (ex: users ou usuarios)}
+        {--campo-email= : Coluna de e-mail da tabela de auth}
+        {--campo-senha= : Coluna de senha da tabela de auth}
+        {--auth : Gera autenticação API (login/register/logout com Sanctum)}
+        {--sem-install-api : Não executa php artisan install:api}
         {--dir-migrations= : Diretório de saída das migrations}
         {--dir-models= : Diretório de saída dos models}
         {--dir-controllers= : Diretório de saída dos controllers}
         {--dir-requests= : Diretório de saída dos Form Requests}
         {--dir-seeders= : Diretório de saída dos seeders}
+        {--dir-rotas= : Diretório de saída das rotas}
         {--namespace-models= : Namespace dos models}
         {--namespace-controllers= : Namespace dos controllers}
         {--namespace-requests= : Namespace dos Form Requests}
@@ -38,7 +45,7 @@ class ComandoGerar extends Command
         {--dry-run : Mostra o plano sem gravar arquivos}
         {--sem-interacao : Não faz perguntas}';
 
-    protected $description = 'Gera migrations, models, Form Requests e controllers CRUD a partir de um schema SQL';
+    protected $description = 'Gera migrations, models, Form Requests, controllers CRUD e rotas a partir de um schema SQL';
 
     public function handle(
         AnalisadorMysql $analisador,
@@ -110,6 +117,10 @@ class ComandoGerar extends Command
             return self::SUCCESS;
         }
 
+        if (! $this->garantirApiLaravel($opcoes)) {
+            return self::FAILURE;
+        }
+
         $erros = $validador->validar($plano);
 
         if ($erros !== []) {
@@ -122,6 +133,7 @@ class ComandoGerar extends Command
         }
 
         $resultado = $escritor->gravar($plano, $opcoes->sobrescrever);
+        $this->registrarRotasNoApi($plano);
         $this->exibirResumoFinal($resultado, $plano->avisos);
 
         return self::SUCCESS;
@@ -134,6 +146,9 @@ class ComandoGerar extends Command
         $artefatos = $this->resolverArtefatos($schema, $config);
         $tabelasCrud = $this->resolverTabelasCrud($schema, $tabelas, $artefatos);
         $tabelasSoftDelete = $this->resolverTabelasSoftDelete($schema, $tabelas, $artefatos, $config);
+        $tabelaUsers = $this->resolverTabelaUsers($schema, $tabelas, $config);
+        [$campoEmail, $campoSenha] = $this->resolverCamposAuth($schema, $tabelaUsers, $config);
+        $artefatos = $this->resolverAuthERotas($schema, $artefatos, $tabelaUsers, $config);
 
         return new OpcoesGeracao(
             artefatos: $artefatos,
@@ -146,9 +161,11 @@ class ComandoGerar extends Command
             namespaceRequests: (string) ($this->option('namespace-requests')
                 ?: ($config['namespace_requests'] ?? 'App\\Http\\Requests')),
             tabelas: $tabelas,
-            tabelaUsers: $this->resolverTabelaUsers($schema, $tabelas, $config),
+            tabelaUsers: $tabelaUsers,
             tabelasCrud: $tabelasCrud,
             tabelasSoftDelete: $tabelasSoftDelete,
+            campoEmail: $campoEmail,
+            campoSenha: $campoSenha,
         );
     }
 
@@ -161,14 +178,14 @@ class ComandoGerar extends Command
         $opcao = $this->option('artefatos');
 
         if (is_string($opcao) && $opcao !== '') {
-            return $this->comRequestsDoCrud($this->parseArtefatos($opcao));
+            return $this->normalizarArtefatos($this->parseArtefatos($opcao));
         }
 
         if ($this->modoInterativo()) {
             return $this->perguntarArtefatos($schema, $config);
         }
 
-        return $this->comRequestsDoCrud($this->artefatosDaConfig($schema, $config));
+        return $this->normalizarArtefatos($this->artefatosDaConfig($schema, $config));
     }
 
     /**
@@ -181,7 +198,7 @@ class ComandoGerar extends Command
         $padrao = [];
 
         foreach (TipoArtefato::cases() as $tipo) {
-            if ($tipo === TipoArtefato::Request) {
+            if (in_array($tipo, [TipoArtefato::Request, TipoArtefato::Auth], true)) {
                 continue;
             }
 
@@ -205,10 +222,10 @@ class ComandoGerar extends Command
             options: $opcoes,
             default: $padrao,
             required: true,
-            hint: 'Espaço marca, Enter confirma',
+            hint: 'Espaço marca, Enter confirma. Controllers CRUD incluem Form Requests. Rotas API são opcionais',
         );
 
-        return $this->comRequestsDoCrud(array_values(array_filter(
+        return $this->normalizarArtefatos(array_values(array_filter(
             array_map(
                 fn (string $valor) => TipoArtefato::tryFrom($valor),
                 $escolhidos,
@@ -225,7 +242,7 @@ class ComandoGerar extends Command
         $selecionados = [];
 
         foreach (TipoArtefato::cases() as $tipo) {
-            if ($tipo === TipoArtefato::Request) {
+            if (in_array($tipo, [TipoArtefato::Request, TipoArtefato::Auth], true)) {
                 continue;
             }
 
@@ -247,7 +264,7 @@ class ComandoGerar extends Command
      * @param  list<TipoArtefato>  $artefatos
      * @return list<TipoArtefato>
      */
-    private function comRequestsDoCrud(array $artefatos): array
+    private function normalizarArtefatos(array $artefatos): array
     {
         if (
             in_array(TipoArtefato::Controller, $artefatos, true)
@@ -256,7 +273,56 @@ class ComandoGerar extends Command
             $artefatos[] = TipoArtefato::Request;
         }
 
+        if (
+            in_array(TipoArtefato::Auth, $artefatos, true)
+            && ! in_array(TipoArtefato::Rota, $artefatos, true)
+        ) {
+            $artefatos[] = TipoArtefato::Rota;
+        }
+
         return array_values($artefatos);
+    }
+
+    /**
+     * @param  list<TipoArtefato>  $artefatos
+     * @param  array<string, mixed>  $config
+     * @return list<TipoArtefato>
+     */
+    private function resolverAuthERotas(
+        Schema $schema,
+        array $artefatos,
+        ?string $tabelaUsers,
+        array $config,
+    ): array {
+        if ($tabelaUsers !== null) {
+            $querAuth = (bool) $this->option('auth')
+                || ($config['artefatos']['auth'] ?? false) === true
+                || in_array(TipoArtefato::Auth, $artefatos, true);
+
+            if ($this->modoInterativo()) {
+                $querAuth = confirm(
+                    'Gerar autenticação API padrão do Laravel (login/register/logout com Sanctum)?',
+                    $querAuth,
+                );
+            }
+
+            if ($querAuth && ! in_array(TipoArtefato::Auth, $artefatos, true)) {
+                $artefatos[] = TipoArtefato::Auth;
+            }
+        }
+
+        if (
+            $this->modoInterativo()
+            && in_array(TipoArtefato::Controller, $artefatos, true)
+            && ! in_array(TipoArtefato::Rota, $artefatos, true)
+            && ! in_array(TipoArtefato::Auth, $artefatos, true)
+        ) {
+            if (confirm('Gerar rotas API (apiResource)?', true)) {
+                $artefatos[] = TipoArtefato::Rota;
+            }
+        }
+
+        return $this->normalizarArtefatos($artefatos);
     }
 
     /** @return list<TipoArtefato> */
@@ -315,7 +381,15 @@ class ComandoGerar extends Command
             return null;
         }
 
-        $candidatas = $tabelas ?? $schema->nomesTabelas();
+        $detectorPivot = new DetectorPivot;
+        $candidatas = array_values(array_filter(
+            $tabelas ?? $schema->nomesTabelas(),
+            function (string $nome) use ($schema, $detectorPivot): bool {
+                $tabela = $this->tabelaPorNome($schema, $nome);
+
+                return $tabela === null || ! $detectorPivot->ehPivot($tabela);
+            },
+        ));
         $opcao = $this->option('tabelas-crud');
 
         if (is_string($opcao) && $opcao !== '') {
@@ -329,7 +403,7 @@ class ComandoGerar extends Command
         }
 
         if (! $this->modoInterativo()) {
-            return null;
+            return $candidatas;
         }
 
         if (count($candidatas) === 1) {
@@ -341,12 +415,8 @@ class ComandoGerar extends Command
             options: array_combine($candidatas, $candidatas),
             default: $candidatas,
             required: true,
-            hint: 'Cada tabela marcada gera Controller + Store/Update Form Request',
+            hint: 'Pivots ficam de fora. Cada tabela gera Controller + Requests + rota',
         );
-
-        if (count($escolhidas) === count($candidatas)) {
-            return null;
-        }
 
         return array_values($escolhidas);
     }
@@ -390,6 +460,94 @@ class ComandoGerar extends Command
         );
 
         return $escolhida === 'nenhuma' ? null : $escolhida;
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     * @return array{0: ?string, 1: ?string}
+     */
+    private function resolverCamposAuth(Schema $schema, ?string $tabelaUsers, array $config): array
+    {
+        if ($tabelaUsers === null) {
+            return [null, null];
+        }
+
+        $tabela = $this->tabelaPorNome($schema, $tabelaUsers);
+
+        if ($tabela === null) {
+            return [null, null];
+        }
+
+        $colunas = array_map(fn ($coluna) => $coluna->nome, $tabela->colunas);
+        $opcoes = array_combine($colunas, $colunas) ?: [];
+
+        $emailOpcao = $this->option('campo-email');
+        $senhaOpcao = $this->option('campo-senha');
+
+        $emailPadrao = is_string($emailOpcao) && $emailOpcao !== ''
+            ? $emailOpcao
+            : (is_string($config['campo_email'] ?? null) && $config['campo_email'] !== ''
+                ? $config['campo_email']
+                : $this->sugerirCampo($colunas, ['email', 'e_mail', 'login', 'username']));
+
+        $senhaPadrao = is_string($senhaOpcao) && $senhaOpcao !== ''
+            ? $senhaOpcao
+            : (is_string($config['campo_senha'] ?? null) && $config['campo_senha'] !== ''
+                ? $config['campo_senha']
+                : $this->sugerirCampo($colunas, ['senha', 'password', 'hash', 'password_hash']));
+
+        if (! $this->modoInterativo()) {
+            return [$emailPadrao, $senhaPadrao];
+        }
+
+        $email = select(
+            label: 'Qual coluna é o e-mail de autenticação?',
+            options: $opcoes,
+            default: ($emailPadrao !== null && isset($opcoes[$emailPadrao])) ? $emailPadrao : $colunas[0],
+        );
+
+        $senha = select(
+            label: 'Qual coluna é a senha de autenticação?',
+            options: $opcoes,
+            default: ($senhaPadrao !== null && isset($opcoes[$senhaPadrao])) ? $senhaPadrao : $colunas[0],
+            hint: 'Se não for password, o model gera getAuthPasswordName()',
+        );
+
+        return [$email, $senha];
+    }
+
+    /**
+     * @param  list<string>  $colunas
+     * @param  list<string>  $candidatos
+     */
+    private function sugerirCampo(array $colunas, array $candidatos): ?string
+    {
+        foreach ($candidatos as $candidato) {
+            if (in_array($candidato, $colunas, true)) {
+                return $candidato;
+            }
+        }
+
+        foreach ($colunas as $coluna) {
+            foreach ($candidatos as $candidato) {
+                if (str_contains($coluna, $candidato)) {
+                    return $coluna;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function tabelaPorNome(Schema $schema, string $nome): ?Tabela
+    {
+        foreach ($schema->tabelas as $tabela) {
+            if ($tabela->nome === $nome) {
+                return $tabela;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -474,6 +632,7 @@ class ComandoGerar extends Command
             'controllers' => 'dir-controllers',
             'requests' => 'dir-requests',
             'seeders' => 'dir-seeders',
+            'rotas' => 'dir-rotas',
         ];
 
         foreach ($mapa as $chave => $opcao) {
@@ -500,6 +659,8 @@ class ComandoGerar extends Command
             tabelaUsers: $opcoes->tabelaUsers,
             tabelasCrud: $opcoes->tabelasCrud,
             tabelasSoftDelete: $opcoes->tabelasSoftDelete,
+            campoEmail: $opcoes->campoEmail,
+            campoSenha: $opcoes->campoSenha,
         );
     }
 
@@ -510,6 +671,104 @@ class ComandoGerar extends Command
         }
 
         return $this->input->isInteractive();
+    }
+
+    private function garantirApiLaravel(OpcoesGeracao $opcoes): bool
+    {
+        if (! $opcoes->authApi() && ! $opcoes->inclui(TipoArtefato::Rota)) {
+            return true;
+        }
+
+        if ($this->option('sem-install-api')) {
+            return true;
+        }
+
+        if ($this->apiLaravelPronta($opcoes->authApi())) {
+            $this->components->info('API Laravel já está pronta.');
+
+            return true;
+        }
+
+        if ($this->modoInterativo()) {
+            $rotulo = $opcoes->authApi()
+                ? 'Instalar API Laravel agora? (php artisan install:api - Sanctum)'
+                : 'Instalar scaffolding de API Laravel agora? (php artisan install:api)';
+
+            if (! confirm($rotulo, true)) {
+                $this->components->warn('Pulou install:api. Rode depois: php artisan install:api --without-migration-prompt');
+
+                return true;
+            }
+        }
+
+        $this->components->info('Executando php artisan install:api...');
+
+        try {
+            $codigo = $this->call('install:api', [
+                '--without-migration-prompt' => true,
+            ]);
+        } catch (\Throwable $erro) {
+            $this->components->error('Falha ao executar install:api: '.$erro->getMessage());
+
+            return false;
+        }
+
+        if ($codigo !== self::SUCCESS) {
+            $this->components->error('install:api retornou código '.$codigo.'.');
+
+            return false;
+        }
+
+        $this->components->info('API Laravel instalada.');
+
+        return true;
+    }
+
+    private function apiLaravelPronta(bool $precisaSanctum): bool
+    {
+        $temApi = is_file(base_path('routes/api.php'));
+        $temSanctum = class_exists(\Laravel\Sanctum\Sanctum::class)
+            || is_dir(base_path('vendor/laravel/sanctum'));
+
+        if ($precisaSanctum) {
+            return $temApi && $temSanctum;
+        }
+
+        return $temApi;
+    }
+
+    private function registrarRotasNoApi(PlanoGeracao $plano): void
+    {
+        $arquivoRotas = null;
+
+        foreach ($plano->arquivos as $arquivo) {
+            if ($arquivo->tipo === TipoArtefato::Rota) {
+                $arquivoRotas = $arquivo->caminho;
+                break;
+            }
+        }
+
+        if ($arquivoRotas === null) {
+            return;
+        }
+
+        $api = base_path('routes/api.php');
+
+        if (! is_file($api)) {
+            $this->components->warn('routes/api.php não encontrado. Inclua manualmente: require base_path(\'routes/sql-to-eloquent.php\');');
+
+            return;
+        }
+
+        $conteudo = (string) file_get_contents($api);
+
+        if (str_contains($conteudo, 'sql-to-eloquent.php')) {
+            return;
+        }
+
+        $require = "require base_path('routes/sql-to-eloquent.php');";
+        file_put_contents($api, rtrim($conteudo).PHP_EOL.PHP_EOL.$require.PHP_EOL);
+        $this->components->info('Rotas registradas em routes/api.php.');
     }
 
     private function exibirResumoSchema(Schema $schema): void
@@ -562,6 +821,14 @@ class ComandoGerar extends Command
 
         if ($opcoes->tabelaUsers !== null) {
             $this->line("  Tabela users: <fg=cyan>{$opcoes->tabelaUsers}</> → <fg=cyan>User</>");
+
+            if ($opcoes->campoEmail !== null) {
+                $this->line("  E-mail auth: <fg=cyan>{$opcoes->campoEmail}</>");
+            }
+
+            if ($opcoes->campoSenha !== null) {
+                $this->line("  Senha auth: <fg=cyan>{$opcoes->campoSenha}</>");
+            }
         }
 
         $this->newLine();

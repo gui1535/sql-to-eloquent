@@ -6,6 +6,8 @@ use SqlToEloquent\Dominio\Schema;
 use SqlToEloquent\Dominio\TipoArtefato;
 use SqlToEloquent\Geracao\ContratoGerador;
 use SqlToEloquent\Geracao\Suporte\ConstrutorController;
+use SqlToEloquent\Geracao\Suporte\DetectorPivot;
+use SqlToEloquent\Geracao\Suporte\DetectorRelacionamentos;
 use SqlToEloquent\Planejamento\ArquivoPlanejado;
 use SqlToEloquent\Planejamento\OpcoesGeracao;
 
@@ -13,6 +15,8 @@ class GeradorController implements ContratoGerador
 {
     public function __construct(
         private readonly ConstrutorController $construtor = new ConstrutorController,
+        private readonly DetectorRelacionamentos $detector = new DetectorRelacionamentos,
+        private readonly DetectorPivot $detectorPivot = new DetectorPivot,
     ) {
     }
 
@@ -24,9 +28,14 @@ class GeradorController implements ContratoGerador
     public function gerar(Schema $schema, OpcoesGeracao $opcoes): array
     {
         $diretorio = rtrim($opcoes->caminhos['controllers'] ?? 'app/Http/Controllers', '/');
+        $relacionamentos = $this->detector->detectar($schema, $opcoes->tabelaUsers);
         $arquivos = [];
 
         foreach ($schema->tabelas as $tabela) {
+            if ($this->detectorPivot->ehPivot($tabela)) {
+                continue;
+            }
+
             if (! $opcoes->incluiTabelaCrud($tabela->nome)) {
                 continue;
             }
@@ -40,6 +49,7 @@ class GeradorController implements ContratoGerador
                     $opcoes->namespaceModels,
                     $opcoes->namespaceRequests,
                     $opcoes->tabelaUsers,
+                    $relacionamentos[$tabela->nome] ?? [],
                 ),
                 tabela: $tabela->nome,
             );

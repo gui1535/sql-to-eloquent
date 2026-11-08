@@ -4,10 +4,12 @@ namespace SqlToEloquent\Geracao;
 
 use SqlToEloquent\Dominio\Schema;
 use SqlToEloquent\Dominio\TipoArtefato;
+use SqlToEloquent\Geracao\Geradores\GeradorAuth;
 use SqlToEloquent\Geracao\Geradores\GeradorController;
 use SqlToEloquent\Geracao\Geradores\GeradorMigration;
 use SqlToEloquent\Geracao\Geradores\GeradorModel;
 use SqlToEloquent\Geracao\Geradores\GeradorRequest;
+use SqlToEloquent\Geracao\Geradores\GeradorRota;
 use SqlToEloquent\Geracao\Geradores\GeradorSeeder;
 use SqlToEloquent\Planejamento\OpcoesGeracao;
 
@@ -23,6 +25,8 @@ class Orquestrador
             new GeradorModel,
             new GeradorRequest,
             new GeradorController,
+            new GeradorAuth,
+            new GeradorRota,
             new GeradorSeeder,
         ];
     }
@@ -33,6 +37,13 @@ class Orquestrador
 
         if ($opcoes->inclui(TipoArtefato::Controller) && ! $opcoes->inclui(TipoArtefato::Request)) {
             $artefatos[] = TipoArtefato::Request;
+        }
+
+        if ($opcoes->inclui(TipoArtefato::Auth) && ! $opcoes->inclui(TipoArtefato::Rota)) {
+            $artefatos[] = TipoArtefato::Rota;
+        }
+
+        if ($artefatos !== $opcoes->artefatos) {
             $opcoes = new OpcoesGeracao(
                 artefatos: $artefatos,
                 caminhos: $opcoes->caminhos,
@@ -44,6 +55,8 @@ class Orquestrador
                 tabelaUsers: $opcoes->tabelaUsers,
                 tabelasCrud: $opcoes->tabelasCrud,
                 tabelasSoftDelete: $opcoes->tabelasSoftDelete,
+                campoEmail: $opcoes->campoEmail,
+                campoSenha: $opcoes->campoSenha,
             );
         }
 

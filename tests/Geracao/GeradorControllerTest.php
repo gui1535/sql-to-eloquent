@@ -42,6 +42,8 @@ class GeradorControllerTest extends TestCase
         $this->assertStringContainsString('public function store(StorePedidoRequest $request)', $pedido);
         $this->assertStringContainsString('public function update(UpdatePedidoRequest $request, Pedido $pedido)', $pedido);
         $this->assertStringContainsString('$request->validated()', $pedido);
+        $this->assertStringContainsString("->with(['usuario'])->paginate()", $pedido);
+        $this->assertStringContainsString("return \$pedido->load(['usuario']);", $pedido);
 
         $usuario = $porTabela['usuarios'];
         $this->assertStringContainsString('class UserController extends Controller', $usuario);

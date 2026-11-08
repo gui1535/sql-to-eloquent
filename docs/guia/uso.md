@@ -11,9 +11,9 @@ No modo interativo, o comando:
 1. Mostra um resumo do schema (tabelas, colunas, foreign keys e inserts)
 2. Pergunta quais tabelas incluir
 3. Pergunta o que gerar (Controllers CRUD já incluem Form Requests)
-4. Se houver CRUD, pergunta quais tabelas devem ter controller + requests
+4. Se houver CRUD, pergunta quais tabelas devem ter controller + requests (pivots ficam de fora)
 5. Pergunta se deseja SoftDeletes e quais tabelas excluir
-6. Pergunta qual tabela é a de usuários/autenticação
+6. Pergunta qual tabela é a de usuários/autenticação e quais colunas são e-mail e senha
 7. Exibe o plano de arquivos (`novo` / `conflito` / `substituir`)
 8. Confirma antes de gravar
 

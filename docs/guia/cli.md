@@ -7,13 +7,17 @@ php artisan sql:gerar {arquivo} [opções]
 | Opção | Descrição |
 | --- | --- |
 | `arquivo` | Caminho do arquivo SQL |
-| `--artefatos=` | Lista separada por vírgula: `migrations`, `models`, `controllers`, `seeders` (`controllers` já inclui Form Requests) |
+| `--artefatos=` | Lista separada por vírgula: `migrations`, `models`, `controllers`, `seeders`, `rotas`, `auth` (`controllers` já inclui Form Requests) |
+| `--auth` | Gera autenticação API (login/register/logout com Sanctum) |
+| `--sem-install-api` | Não executa `php artisan install:api` automaticamente |
 | `--tabelas=` | Filtra tabelas (separadas por vírgula) |
 | `--tabelas-crud=` | Tabelas com Controller CRUD + Form Requests |
 | `--soft-deletes` | Ativa SoftDeletes nas tabelas incluídas |
 | `--sem-soft-delete=` | Tabelas sem SoftDeletes (usar com `--soft-deletes`) |
 | `--tabelas-soft-delete=` | Lista explícita de tabelas com SoftDeletes |
 | `--tabela-users=` | Tabela de autenticação (`users`, `usuarios` ou `nenhuma`) |
+| `--campo-email=` | Coluna de e-mail da tabela de auth |
+| `--campo-senha=` | Coluna de senha da tabela de auth |
 | `--dir-migrations=` | Diretório de saída das migrations |
 | `--dir-models=` | Diretório de saída dos models |
 | `--dir-controllers=` | Diretório de saída dos controllers |
@@ -32,6 +36,8 @@ php artisan sql:gerar {arquivo} [opções]
 | `models` | Models Eloquent |
 | `controllers` | Controllers CRUD + Form Requests |
 | `seeders` | Seeders (somente se houver `INSERT` no SQL) |
+| `rotas` | Arquivo `routes/sql-to-eloquent.php` com `apiResource` |
+| `auth` | Auth API Sanctum (login/register/me/logout) |
 
 ## Exemplos rápidos
 

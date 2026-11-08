@@ -6,6 +6,7 @@ use SqlToEloquent\Dominio\Schema;
 use SqlToEloquent\Dominio\TipoArtefato;
 use SqlToEloquent\Geracao\ContratoGerador;
 use SqlToEloquent\Geracao\Suporte\ConstrutorRequest;
+use SqlToEloquent\Geracao\Suporte\DetectorPivot;
 use SqlToEloquent\Planejamento\ArquivoPlanejado;
 use SqlToEloquent\Planejamento\OpcoesGeracao;
 
@@ -13,6 +14,7 @@ class GeradorRequest implements ContratoGerador
 {
     public function __construct(
         private readonly ConstrutorRequest $construtor = new ConstrutorRequest,
+        private readonly DetectorPivot $detectorPivot = new DetectorPivot,
     ) {
     }
 
@@ -27,6 +29,10 @@ class GeradorRequest implements ContratoGerador
         $arquivos = [];
 
         foreach ($schema->tabelas as $tabela) {
+            if ($this->detectorPivot->ehPivot($tabela)) {
+                continue;
+            }
+
             if (! $opcoes->incluiTabelaCrud($tabela->nome)) {
                 continue;
             }

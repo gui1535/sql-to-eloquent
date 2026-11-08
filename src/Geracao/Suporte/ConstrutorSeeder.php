@@ -11,22 +11,22 @@ class ConstrutorSeeder
     ) {
     }
 
-    public function nomeClasse(string $tabela): string
+    public function nomeClasse(string $tabela, ?string $tabelaUsers = null): string
     {
-        return $this->nomeador->classe($tabela).'Seeder';
+        return $this->nomeador->classe($tabela, $tabelaUsers).'Seeder';
     }
 
-    public function nomeArquivo(string $tabela): string
+    public function nomeArquivo(string $tabela, ?string $tabelaUsers = null): string
     {
-        return $this->nomeClasse($tabela).'.php';
+        return $this->nomeClasse($tabela, $tabelaUsers).'.php';
     }
 
     /**
      * @param  list<Insercao>  $insercoes
      */
-    public function montar(string $tabela, array $insercoes): string
+    public function montar(string $tabela, array $insercoes, ?string $tabelaUsers = null): string
     {
-        $classe = $this->nomeClasse($tabela);
+        $classe = $this->nomeClasse($tabela, $tabelaUsers);
         $linhas = $this->linhasInsert($tabela, $insercoes);
         $corpo = implode("\n", array_map(
             fn (string $linha) => '            '.$linha,
@@ -46,6 +46,37 @@ class {$classe} extends Seeder
     public function run(): void
     {
         DB::table('{$tabela}')->insert([
+{$corpo}
+        ]);
+    }
+}
+
+PHP;
+    }
+
+    /**
+     * @param  list<string>  $classes
+     */
+    public function montarDatabaseSeeder(array $classes): string
+    {
+        $linhas = array_map(
+            fn (string $classe) => "            {$classe}::class,",
+            $classes,
+        );
+        $corpo = implode("\n", $linhas);
+
+        return <<<PHP
+<?php
+
+namespace Database\\Seeders;
+
+use Illuminate\Database\Seeder;
+
+class DatabaseSeeder extends Seeder
+{
+    public function run(): void
+    {
+        \$this->call([
 {$corpo}
         ]);
     }

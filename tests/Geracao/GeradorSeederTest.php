@@ -24,12 +24,17 @@ class GeradorSeederTest extends TestCase
             ),
         );
 
-        $this->assertCount(1, $arquivos);
+        $this->assertCount(2, $arquivos);
         $this->assertSame('usuarios', $arquivos[0]->tabela);
         $this->assertStringContainsString('class UsuarioSeeder extends Seeder', $arquivos[0]->conteudo);
         $this->assertStringContainsString("'nome' => 'Ana'", $arquivos[0]->conteudo);
         $this->assertStringContainsString("'email' => 'ana@teste.com'", $arquivos[0]->conteudo);
         $this->assertTrue($this->sintaxeValida($arquivos[0]->conteudo));
+
+        $this->assertNull($arquivos[1]->tabela);
+        $this->assertStringContainsString('class DatabaseSeeder extends Seeder', $arquivos[1]->conteudo);
+        $this->assertStringContainsString('UsuarioSeeder::class', $arquivos[1]->conteudo);
+        $this->assertTrue($this->sintaxeValida($arquivos[1]->conteudo));
 
         $semDados = (new AnalisadorMysql)->analisar(<<<'SQL'
             CREATE TABLE produtos (

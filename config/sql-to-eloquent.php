@@ -7,6 +7,7 @@ return [
         'controllers' => app_path('Http/Controllers'),
         'requests' => app_path('Http/Requests'),
         'seeders' => database_path('seeders'),
+        'rotas' => base_path('routes'),
     ],
 
     'artefatos' => [
@@ -15,6 +16,8 @@ return [
         'controllers' => true,
         'requests' => true,
         'seeders' => true,
+        'rotas' => false,
+        'auth' => false,
     ],
 
     'sobrescrever' => false,
@@ -26,4 +29,6 @@ return [
     'namespace_requests' => 'App\\Http\\Requests',
 
     'tabela_users' => null,
+    'campo_email' => null,
+    'campo_senha' => null,
 ];

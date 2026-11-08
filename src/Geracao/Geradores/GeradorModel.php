@@ -6,6 +6,7 @@ use SqlToEloquent\Dominio\Schema;
 use SqlToEloquent\Dominio\TipoArtefato;
 use SqlToEloquent\Geracao\ContratoGerador;
 use SqlToEloquent\Geracao\Suporte\ConstrutorModel;
+use SqlToEloquent\Geracao\Suporte\DetectorPivot;
 use SqlToEloquent\Geracao\Suporte\DetectorRelacionamentos;
 use SqlToEloquent\Planejamento\ArquivoPlanejado;
 use SqlToEloquent\Planejamento\OpcoesGeracao;
@@ -15,6 +16,7 @@ class GeradorModel implements ContratoGerador
     public function __construct(
         private readonly ConstrutorModel $construtor = new ConstrutorModel,
         private readonly DetectorRelacionamentos $detector = new DetectorRelacionamentos,
+        private readonly DetectorPivot $detectorPivot = new DetectorPivot,
     ) {
     }
 
@@ -30,7 +32,12 @@ class GeradorModel implements ContratoGerador
         $arquivos = [];
 
         foreach ($schema->tabelas as $tabela) {
+            if ($this->detectorPivot->ehPivotPura($tabela)) {
+                continue;
+            }
+
             $rels = $relacionamentos[$tabela->nome] ?? [];
+            $ehUsers = $tabela->nome === $opcoes->tabelaUsers;
 
             $arquivos[] = new ArquivoPlanejado(
                 tipo: TipoArtefato::Model,
@@ -41,6 +48,9 @@ class GeradorModel implements ContratoGerador
                     $rels,
                     $opcoes->tabelaUsers,
                     $opcoes->incluiSoftDelete($tabela->nome) || $tabela->coluna('deleted_at') !== null,
+                    $ehUsers ? $opcoes->campoEmail : null,
+                    $ehUsers ? $opcoes->campoSenha : null,
+                    $opcoes->authApi(),
                 ),
                 tabela: $tabela->nome,
             );

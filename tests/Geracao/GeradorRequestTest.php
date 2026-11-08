@@ -56,7 +56,18 @@ class GeradorRequestTest extends TestCase
         $this->assertStringContainsString("Rule::unique('usuarios', 'email')->ignore(\$this->route('user'))", $updateUser);
 
         $this->assertNotNull($updatePedido);
-        $this->assertStringContainsString("'total' => 'required|numeric'", $updatePedido);
+        $this->assertStringContainsString("'total' => 'sometimes|numeric'", $updatePedido);
+        $this->assertStringContainsString("'usuario_id' => 'sometimes|integer|exists:usuarios,id'", $updatePedido);
+
+        $storePedido = null;
+        foreach ($arquivos as $arquivo) {
+            if (str_contains($arquivo->caminho, 'StorePedidoRequest.php')) {
+                $storePedido = $arquivo->conteudo;
+            }
+        }
+
+        $this->assertNotNull($storePedido);
+        $this->assertStringContainsString("'usuario_id' => 'required|integer|exists:usuarios,id'", $storePedido);
     }
 
     private function sintaxeValida(string $conteudo): bool

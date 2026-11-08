@@ -67,7 +67,7 @@ PHP;
         $unicos = $this->montadorRegras->unicos($tabela);
         $usaRule = $unicos !== [];
         $regras = $this->exportarRegrasUpdate(
-            $this->montadorRegras->regras($tabela),
+            $this->montadorRegras->regras($tabela, true),
             $unicos,
             $tabela->nome,
             $variavel,

@@ -2,6 +2,7 @@
 
 namespace SqlToEloquent\Geracao\Suporte;
 
+use SqlToEloquent\Dominio\ChaveEstrangeira;
 use SqlToEloquent\Dominio\Coluna;
 use SqlToEloquent\Dominio\Tabela;
 
@@ -10,9 +11,9 @@ class MontadorRegras
     /**
      * @return array<string, list<string>>
      */
-    public function regras(Tabela $tabela): array
+    public function regras(Tabela $tabela, bool $parcial = false): array
     {
-        $excluir = ['id', 'created_at', 'updated_at', 'criado_em', 'atualizado_em', 'remember_token'];
+        $excluir = ['id', 'created_at', 'updated_at', 'criado_em', 'atualizado_em', 'remember_token', 'deleted_at'];
         $regras = [];
 
         foreach ($tabela->colunas as $coluna) {
@@ -24,7 +25,13 @@ class MontadorRegras
                 continue;
             }
 
-            $regras[$coluna->nome] = $this->regrasColuna($coluna, $tabela);
+            $lista = $this->regrasColuna($coluna, $tabela);
+
+            if ($parcial) {
+                $lista = $this->tornarParcial($lista);
+            }
+
+            $regras[$coluna->nome] = $lista;
         }
 
         return $regras;
@@ -44,6 +51,22 @@ class MontadorRegras
         }
 
         return array_values(array_unique($campos));
+    }
+
+    /**
+     * @param  list<string>  $regras
+     * @return list<string>
+     */
+    private function tornarParcial(array $regras): array
+    {
+        $filtradas = array_values(array_filter(
+            $regras,
+            fn (string $regra) => $regra !== 'required',
+        ));
+
+        array_unshift($filtradas, 'sometimes');
+
+        return array_values(array_unique($filtradas));
     }
 
     /** @return list<string> */
@@ -79,6 +102,12 @@ class MontadorRegras
             $regras[] = 'email';
         }
 
+        $fk = $this->fkDaColuna($tabela, $coluna->nome);
+
+        if ($fk !== null) {
+            $regras[] = 'exists:'.$fk->tabelaReferenciada.','.$fk->colunasReferenciadas[0];
+        }
+
         foreach ($tabela->indices as $indice) {
             if ($indice->unico && $indice->colunas === [$coluna->nome]) {
                 $regras[] = 'unique:'.$tabela->nome.','.$coluna->nome;
@@ -86,5 +115,16 @@ class MontadorRegras
         }
 
         return array_values(array_unique($regras));
+    }
+
+    private function fkDaColuna(Tabela $tabela, string $coluna): ?ChaveEstrangeira
+    {
+        foreach ($tabela->chavesEstrangeiras as $fk) {
+            if ($fk->colunas === [$coluna] && count($fk->colunasReferenciadas) === 1) {
+                return $fk;
+            }
+        }
+
+        return null;
     }
 }

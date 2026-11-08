@@ -48,6 +48,16 @@ class NomeadorModel
         return Str::camel($this->singular($tabelaRelacionada));
     }
 
+    public function metodoBelongsToMany(string $tabelaRelacionada): string
+    {
+        return Str::camel($tabelaRelacionada);
+    }
+
+    public function recurso(string $tabela): string
+    {
+        return $tabela;
+    }
+
     public function singular(string $nome): string
     {
         $partes = explode('_', $nome);

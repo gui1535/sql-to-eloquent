@@ -27,14 +27,25 @@ class ConstrutorModel
         array $relacionamentos = [],
         ?string $tabelaUsers = null,
         bool $softDelete = false,
+        ?string $campoEmail = null,
+        ?string $campoSenha = null,
+        bool $authApi = false,
     ): string {
         $classe = $this->nomeador->classe($tabela->nome, $tabelaUsers);
         $ehUsers = $this->nomeador->ehTabelaUsers($tabela->nome, $tabelaUsers);
-        $corpo = $this->corpo($tabela, $relacionamentos, $ehUsers, $softDelete);
-        $imports = $this->montarImports($relacionamentos, $softDelete);
+        $usaSanctum = $ehUsers && $authApi;
+        $corpo = $this->corpo(
+            $tabela,
+            $relacionamentos,
+            $ehUsers,
+            $softDelete,
+            $campoEmail,
+            $campoSenha,
+        );
+        $imports = $this->montarImports($relacionamentos, $softDelete, $usaSanctum);
         $blocoImports = $imports === '' ? '' : $imports."\n";
         $extends = $ehUsers ? 'Authenticatable' : 'Model';
-        $traits = $this->traits($ehUsers, $softDelete);
+        $traits = $this->traits($ehUsers, $softDelete, $usaSanctum);
 
         $useBase = $ehUsers
             ? "use Illuminate\\Foundation\\Auth\\User as Authenticatable;\nuse Illuminate\\Notifications\\Notifiable;"
@@ -55,12 +66,16 @@ class {$classe} extends {$extends}
 PHP;
     }
 
-    private function traits(bool $ehUsers, bool $softDelete): string
+    private function traits(bool $ehUsers, bool $softDelete, bool $usaSanctum): string
     {
         $usados = [];
 
         if ($ehUsers) {
             $usados[] = 'Notifiable';
+        }
+
+        if ($usaSanctum) {
+            $usados[] = 'HasApiTokens';
         }
 
         if ($softDelete) {
@@ -77,9 +92,13 @@ PHP;
     /**
      * @param  list<Relacionamento>  $relacionamentos
      */
-    private function montarImports(array $relacionamentos, bool $softDelete): string
+    private function montarImports(array $relacionamentos, bool $softDelete, bool $usaSanctum): string
     {
         $linhas = [];
+
+        if ($usaSanctum) {
+            $linhas[] = 'use Laravel\\Sanctum\\HasApiTokens;';
+        }
 
         if ($softDelete) {
             $linhas[] = 'use Illuminate\\Database\\Eloquent\\SoftDeletes;';
@@ -91,6 +110,7 @@ PHP;
             $tipos[$rel->tipo] = match ($rel->tipo) {
                 'belongsTo' => 'use Illuminate\\Database\\Eloquent\\Relations\\BelongsTo;',
                 'hasOne' => 'use Illuminate\\Database\\Eloquent\\Relations\\HasOne;',
+                'belongsToMany' => 'use Illuminate\\Database\\Eloquent\\Relations\\BelongsToMany;',
                 default => 'use Illuminate\\Database\\Eloquent\\Relations\\HasMany;',
             };
         }
@@ -103,8 +123,14 @@ PHP;
     /**
      * @param  list<Relacionamento>  $relacionamentos
      */
-    private function corpo(Tabela $tabela, array $relacionamentos, bool $ehUsers, bool $softDelete): string
-    {
+    private function corpo(
+        Tabela $tabela,
+        array $relacionamentos,
+        bool $ehUsers,
+        bool $softDelete,
+        ?string $campoEmail,
+        ?string $campoSenha,
+    ): string {
         $blocos = [];
 
         $blocos[] = "    protected \$table = '{$tabela->nome}';";
@@ -114,7 +140,10 @@ PHP;
             $blocos[] = "    protected \$primaryKey = '{$pk[0]}';";
         }
 
-        if (count($pk) === 1) {
+        if (count($pk) > 1) {
+            $blocos[] = '    public $incrementing = false;';
+            $blocos[] = '    protected $primaryKey = null;';
+        } elseif (count($pk) === 1) {
             $colunaPk = $tabela->coluna($pk[0]);
 
             if ($colunaPk !== null && ! $colunaPk->autoIncremento) {
@@ -135,14 +164,20 @@ PHP;
             $blocos[] = $this->arrayPropriedade('fillable', $fillable);
         }
 
-        $hidden = $this->hidden($tabela);
+        $hidden = $this->hidden($tabela, $campoSenha);
         if ($hidden !== []) {
             $blocos[] = $this->arrayPropriedade('hidden', $hidden);
         }
 
-        $casts = $this->casts($tabela, $ehUsers);
+        $casts = $this->casts($tabela, $ehUsers, $campoSenha);
         if ($casts !== []) {
             $blocos[] = $this->arrayAssociativo('casts', $casts);
+        }
+
+        if ($ehUsers) {
+            foreach ($this->metodosAuth($campoEmail, $campoSenha) as $metodo) {
+                $blocos[] = $metodo;
+            }
         }
 
         foreach ($relacionamentos as $rel) {
@@ -150,6 +185,39 @@ PHP;
         }
 
         return implode("\n\n", $blocos);
+    }
+
+    /** @return list<string> */
+    private function metodosAuth(?string $campoEmail, ?string $campoSenha): array
+    {
+        $metodos = [];
+        $senha = $campoSenha ?: 'password';
+        $email = $campoEmail ?: 'email';
+
+        if ($senha !== 'password') {
+            $metodos[] = <<<PHP
+    public function getAuthPasswordName(): string
+    {
+        return '{$senha}';
+    }
+PHP;
+        }
+
+        if ($email !== 'email') {
+            $metodos[] = <<<PHP
+    public function getEmailForPasswordReset(): string
+    {
+        return (string) \$this->{$email};
+    }
+
+    public function routeNotificationForMail(): string
+    {
+        return (string) \$this->{$email};
+    }
+PHP;
+        }
+
+        return $metodos;
     }
 
     /** @return list<string> */
@@ -195,26 +263,27 @@ PHP;
     }
 
     /** @return list<string> */
-    private function hidden(Tabela $tabela): array
+    private function hidden(Tabela $tabela, ?string $campoSenha): array
     {
         $hidden = [];
+        $candidatos = array_filter(['password', 'senha', 'remember_token', $campoSenha]);
 
-        foreach (['password', 'senha', 'remember_token'] as $campo) {
+        foreach (array_unique($candidatos) as $campo) {
             if ($tabela->coluna($campo) !== null) {
                 $hidden[] = $campo;
             }
         }
 
-        return $hidden;
+        return array_values(array_unique($hidden));
     }
 
     /** @return array<string, string> */
-    private function casts(Tabela $tabela, bool $ehUsers): array
+    private function casts(Tabela $tabela, bool $ehUsers, ?string $campoSenha): array
     {
         $casts = [];
 
         foreach ($tabela->colunas as $coluna) {
-            $cast = $this->castColuna($coluna, $ehUsers);
+            $cast = $this->castColuna($coluna, $ehUsers, $campoSenha);
 
             if ($cast !== null) {
                 $casts[$coluna->nome] = $cast;
@@ -224,9 +293,11 @@ PHP;
         return $casts;
     }
 
-    private function castColuna(Coluna $coluna, bool $ehUsers): ?string
+    private function castColuna(Coluna $coluna, bool $ehUsers, ?string $campoSenha): ?string
     {
-        if ($ehUsers && in_array($coluna->nome, ['password', 'senha'], true)) {
+        $senhas = array_filter(['password', 'senha', $campoSenha]);
+
+        if ($ehUsers && in_array($coluna->nome, $senhas, true)) {
             return 'hashed';
         }
 
@@ -272,6 +343,10 @@ PHP;
 
     private function metodoRelacionamento(Relacionamento $rel): string
     {
+        if ($rel->tipo === 'belongsToMany') {
+            return $this->metodoBelongsToMany($rel);
+        }
+
         $retorno = match ($rel->tipo) {
             'belongsTo' => 'BelongsTo',
             'hasOne' => 'HasOne',
@@ -282,6 +357,27 @@ PHP;
     public function {$rel->metodo}(): {$retorno}
     {
         return \$this->{$rel->tipo}({$rel->modelo}::class, '{$rel->chaveEstrangeira}', '{$rel->chaveDona}');
+    }
+PHP;
+    }
+
+    private function metodoBelongsToMany(Relacionamento $rel): string
+    {
+        $cadeia = "\$this->belongsToMany({$rel->modelo}::class, '{$rel->tabelaPivot}', '{$rel->chaveEstrangeira}', '{$rel->chaveRelacionada}')";
+
+        if ($rel->withPivot !== []) {
+            $cols = implode("', '", $rel->withPivot);
+            $cadeia .= "\n            ->withPivot('{$cols}')";
+        }
+
+        if ($rel->withTimestamps) {
+            $cadeia .= "\n            ->withTimestamps()";
+        }
+
+        return <<<PHP
+    public function {$rel->metodo}(): BelongsToMany
+    {
+        return {$cadeia};
     }
 PHP;
     }
