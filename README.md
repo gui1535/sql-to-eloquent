@@ -1,6 +1,13 @@
 # SQL to Eloquent
 
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/gui1535/sql-to-eloquent.svg?style=flat-square)](https://packagist.org/packages/gui1535/sql-to-eloquent)
+[![Total Downloads](https://img.shields.io/packagist/dt/gui1535/sql-to-eloquent.svg?style=flat-square)](https://packagist.org/packages/gui1535/sql-to-eloquent)
+[![License](https://img.shields.io/packagist/l/gui1535/sql-to-eloquent.svg?style=flat-square)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-github%20pages-blue?style=flat-square)](https://gui1535.github.io/sql-to-eloquent/)
+
 Gera artefatos Laravel a partir de schemas e dumps SQL MySQL/MariaDB.
+
+Documentação: [gui1535.github.io/sql-to-eloquent](https://gui1535.github.io/sql-to-eloquent/)
 
 A biblioteca interpreta dumps MySQL/MariaDB (sem executá-los) e cria migrations, models Eloquent, controllers CRUD e seeders quando houver `INSERT` no arquivo.
 
