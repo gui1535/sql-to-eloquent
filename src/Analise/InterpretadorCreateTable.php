@@ -245,6 +245,27 @@ class InterpretadorCreateTable
         return $this->lerColuna($leitor, $avisos);
     }
 
+    public function interpretarColuna(LeitorTokens $leitor, array &$avisos): array
+    {
+        return $this->lerColuna($leitor, $avisos);
+    }
+
+    public function interpretarForeignKey(LeitorTokens $leitor, ?string $nome): ChaveEstrangeira
+    {
+        return $this->lerForeignKey($leitor, $nome);
+    }
+
+    public function interpretarNome(LeitorTokens $leitor): string
+    {
+        return $this->lerNome($leitor);
+    }
+
+    /** @return list<string> */
+    public function interpretarListaNomes(LeitorTokens $leitor): array
+    {
+        return $this->lerListaNomes($leitor);
+    }
+
     private function lerColuna(LeitorTokens $leitor, array &$avisos): array
     {
         $nome = $this->lerNome($leitor);

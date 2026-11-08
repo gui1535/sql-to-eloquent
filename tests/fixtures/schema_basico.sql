@@ -57,4 +57,6 @@ CREATE VIEW `vw_pedidos` AS SELECT id, total FROM pedidos;
 
 ALTER TABLE `produtos` ADD COLUMN `sku` varchar(50) NULL;
 
+CREATE INDEX `produtos_estoque_index` ON `produtos` (`estoque`);
+
 INSERT INTO `usuarios` (`nome`, `email`, `senha`) VALUES ('Ana', 'ana@teste.com', 'hash');

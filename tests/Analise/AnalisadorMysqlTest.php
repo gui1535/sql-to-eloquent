@@ -77,11 +77,37 @@ class AnalisadorMysqlTest extends TestCase
         $this->assertNotNull($itens);
         $this->assertCount(2, $itens->chavesEstrangeiras);
 
+        $produtos = $schema->tabela('produtos');
+        $this->assertNotNull($produtos->coluna('sku'));
+        $this->assertSame('varchar', $produtos->coluna('sku')?->tipo);
+        $nomesIndices = array_map(fn ($indice) => $indice->nome, $produtos->indices);
+        $this->assertContains('produtos_estoque_index', $nomesIndices);
+
         $this->assertNotEmpty($schema->avisos);
-        $this->assertTrue(
-            $this->avisoContem($schema->avisos, 'CREATE VIEW')
-            || $this->avisoContem($schema->avisos, 'ALTER TABLE')
-        );
+        $this->assertTrue($this->avisoContem($schema->avisos, 'CREATE VIEW'));
+    }
+
+    public function test_aplica_alter_table_e_create_index(): void
+    {
+        $schema = $this->analisador->analisar(<<<'SQL'
+            CREATE TABLE produtos (
+              id bigint unsigned NOT NULL AUTO_INCREMENT,
+              nome varchar(120) NOT NULL,
+              PRIMARY KEY (id)
+            );
+
+            ALTER TABLE produtos
+              ADD COLUMN preco decimal(10,2) NOT NULL DEFAULT 0.00,
+              ADD INDEX produtos_nome_index (nome);
+
+            CREATE UNIQUE INDEX produtos_nome_unique ON produtos (nome);
+        SQL);
+
+        $produtos = $schema->tabela('produtos');
+        $this->assertNotNull($produtos);
+        $this->assertNotNull($produtos->coluna('preco'));
+        $this->assertSame(10, $produtos->coluna('preco')?->precisao);
+        $this->assertCount(2, $produtos->indices);
     }
 
     public function test_captura_insert_e_ignora_set_drop_sem_aviso(): void

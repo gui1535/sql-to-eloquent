@@ -2,7 +2,7 @@
 
 Gera artefatos Laravel a partir de schemas e dumps SQL MySQL/MariaDB.
 
-A biblioteca interpreta o SQL (sem executá-lo) e cria migrations, models Eloquent, controllers CRUD e seeders quando houver `INSERT` no arquivo.
+A biblioteca interpreta dumps MySQL/MariaDB (sem executá-los) e cria migrations, models Eloquent, controllers CRUD e seeders quando houver `INSERT` no arquivo.
 
 ## Requisitos
 
@@ -147,12 +147,23 @@ return [
 - Arquivos existentes não são sobrescritos sem `--sobrescrever` (ou confirmação interativa)
 - Estruturas não suportadas geram avisos em vez de código incorreto silencioso
 
+## Suporte SQL
+
+Dialectos: **MySQL** e **MariaDB**.
+
+O parser interpreta:
+
+- `CREATE TABLE`
+- `ALTER TABLE` (`ADD`/`DROP`/`MODIFY`/`CHANGE` COLUMN, índices e foreign keys)
+- `CREATE INDEX` / `CREATE UNIQUE INDEX`
+- `INSERT`
+
+Statements como `CREATE VIEW` ainda são ignorados com aviso.
+
 ## Limitações atuais
 
-- Suporte focado em MySQL/MariaDB
-- Parser principal: `CREATE TABLE` e `INSERT`
-- Statements como `ALTER TABLE`, `CREATE VIEW` e `CREATE INDEX` soltos são ignorados com aviso
 - Não gera factories, form requests, API resources nem rotas
+- Algumas variantes avançadas de `ALTER TABLE` (rename de tabela, conversão de charset, drop de constraints) ainda são ignoradas com aviso
 
 ## Testes
 
