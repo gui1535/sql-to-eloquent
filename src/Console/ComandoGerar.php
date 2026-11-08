@@ -202,9 +202,9 @@ class ComandoGerar extends Command
         return select(
             label: 'Como deseja gerar?',
             options: [
-                'essencial' => 'Essencial — migrations + models (+ seeders se houver INSERT)',
-                'api' => 'API completa — CRUD, requests, rotas e autenticação Sanctum',
-                'personalizado' => 'Personalizado — escolher cada item',
+                'essencial' => 'Essencial - migrations + models (+ seeders se houver INSERT)',
+                'api' => 'API completa - CRUD, requests, rotas e autenticação Sanctum',
+                'personalizado' => 'Personalizado - escolher cada item',
             ],
             default: 'essencial',
         );
@@ -1009,7 +1009,7 @@ class ComandoGerar extends Command
                 $detalhe .= ", {$conflitos} conflito(s)";
             }
 
-            $this->line("  <fg=yellow;options=bold>{$rotulo}</> <fg=gray>(".count($arquivos)." — {$detalhe})</>");
+            $this->line("  <fg=yellow;options=bold>{$rotulo}</> <fg=gray>(".count($arquivos)." - {$detalhe})</>");
 
             if ($this->detalhado() || count($arquivos) <= 3) {
                 foreach ($arquivos as $arquivo) {

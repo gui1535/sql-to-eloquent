@@ -21,5 +21,5 @@ features:
   - title: API opcional
     details: Controllers CRUD, Form Requests, rotas com parameters em português e auth Sanctum.
   - title: CLI com presets
-    details: Essencial, API completa ou personalizado — plano compacto, dry-run e ajustes do projeto Laravel.
+    details: Essencial, API completa ou personalizado - plano compacto, dry-run e ajustes do projeto Laravel.
 ---

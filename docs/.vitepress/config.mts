@@ -15,7 +15,7 @@ export default defineConfig({
       { text: 'Guia', link: '/guia/instalacao' },
       { text: 'CLI', link: '/guia/cli' },
       {
-        text: 'v1.0.1',
+        text: 'v1.1.0',
         items: [
           { text: 'Changelog', link: 'https://github.com/gui1535/sql-to-eloquent/releases' },
           { text: 'Packagist', link: 'https://packagist.org/packages/gui1535/sql-to-eloquent' },
@@ -35,6 +35,7 @@ export default defineConfig({
         text: 'Uso',
         items: [
           { text: 'Primeiros passos', link: '/guia/uso' },
+          { text: 'Simulações da CLI', link: '/guia/uso#simulacoes' },
           { text: 'Opções da CLI', link: '/guia/cli' },
           { text: 'O que é gerado', link: '/guia/geracao' },
           { text: 'Configuração', link: '/guia/configuracao' },

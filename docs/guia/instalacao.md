@@ -11,6 +11,12 @@
 composer require gui1535/sql-to-eloquent
 ```
 
+Versão atual da documentação: **v1.1.0**.
+
+```bash
+composer require gui1535/sql-to-eloquent:^1.1
+```
+
 O service provider é registrado automaticamente pelo Laravel Package Discovery.
 
 ## Publicar configuração
