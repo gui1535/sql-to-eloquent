@@ -1,1 +1,9 @@
-ideias/
+/vendor/
+/composer.lock
+/.phpunit.cache/
+/phpunit.xml.bak
+/.idea/
+/.vscode/
+/ideias/
+*.log
+.env
